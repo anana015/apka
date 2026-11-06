@@ -2,7 +2,11 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0D7367" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#121917" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Mój Budżet Domowy</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -10,281 +14,313 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <!-- PapaParse do obsługi CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <!-- Chart.js do wykresów -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Ikony Lucide -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/app.css">
 </head>
-<body class="bg-[var(--bg)] text-[var(--fg)] flex justify-center items-center min-h-screen m-0">
+<body>
 
     <!-- EKRAN LOGOWANIA -->
-    <div id="ekran-logowania" class="w-full max-w-md bg-[var(--surface)] h-screen md:h-[892px] md:rounded-[28px] md:shadow-2xl p-6 flex flex-col justify-center items-center relative border border-gray-200 dark:border-gray-800">
-        <div class="w-full space-y-6 text-center">
-            <div class="w-16 h-16 bg-[var(--accent)] text-white rounded-2xl flex items-center justify-center mx-auto shadow-lg">
+    <div id="ekran-logowania" class="login-screen">
+        <div class="card login-card space-y-6 text-center">
+            <div class="w-16 h-16 bg-[var(--accent)] text-[var(--on-accent)] rounded-2xl flex items-center justify-center mx-auto">
                 <i data-lucide="wallet" class="w-8 h-8"></i>
             </div>
             <div>
-                <h2 class="text-2xl font-bold">Budżet Domowy</h2>
+                <h1 class="text-2xl font-bold">Budżet Domowy</h1>
                 <p class="text-xs text-[var(--muted)] mt-1">Zaloguj się do wspólnego budżetu</p>
             </div>
 
             <form id="form-login" onsubmit="obsluzLogowanie(event)" class="space-y-4 text-left">
                 <div>
-                    <label class="text-xs font-semibold text-[var(--muted)] block mb-1">Adres e-mail</label>
-                    <input type="email" id="login-email" required placeholder="twoj@email.pl" class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-[var(--bg)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
+                    <label for="login-email" class="field-label">Adres e-mail</label>
+                    <input type="email" id="login-email" required autocomplete="email" placeholder="twoj@email.pl" class="input">
                 </div>
                 <div>
-                    <label class="text-xs font-semibold text-[var(--muted)] block mb-1">Hasło</label>
-                    <input type="password" id="login-password" required placeholder="••••••••" class="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-[var(--bg)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
+                    <label for="login-password" class="field-label">Hasło</label>
+                    <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" class="input">
                 </div>
-                <div id="login-error" class="hidden text-xs text-red-600 bg-red-50 dark:bg-red-950/40 p-3 rounded-xl border border-red-200"></div>
-                <button type="submit" id="btn-login" class="w-full bg-[var(--accent)] text-white py-3.5 rounded-xl font-semibold text-sm shadow-md hover:opacity-90 transition">Zaloguj się</button>
+                <div id="login-error" role="alert" class="hidden text-xs text-[var(--c-spend)] p-3 rounded-xl border border-current"></div>
+                <button type="submit" id="btn-login" class="btn-primary">Zaloguj się</button>
             </form>
         </div>
     </div>
 
     <!-- GŁÓWNA APLIKACJA -->
-    <div id="glowna-aplikacja" class="hidden w-full max-w-md bg-[var(--surface)] h-screen md:h-[892px] md:rounded-[28px] md:shadow-2xl flex flex-col overflow-hidden relative border border-gray-200 dark:border-gray-800">
+    <div id="glowna-aplikacja" class="hidden app-shell">
 
         <!-- NAGŁÓWEK -->
-        <header class="bg-[var(--accent)] text-white p-5 shadow-sm flex justify-between items-center shrink-0">
+        <header class="app-header">
             <div>
                 <h1 class="text-xl font-bold" id="app-title">Pulpit</h1>
-                <p class="text-xs opacity-80" id="status-polaczenia">Połączono z chmurą</p>
+                <p class="text-xs opacity-80" id="status-polaczenia" aria-live="polite">Połączono z chmurą</p>
             </div>
-            <div class="flex gap-2">
-                <button onclick="pobierzDane()" class="p-2 rounded-full hover:bg-white/10 transition" title="Odśwież">
+            <div class="flex gap-1">
+                <button type="button" onclick="pobierzDane()" class="icon-btn" title="Odśwież" aria-label="Odśwież dane">
                     <i data-lucide="rotate-cw" class="w-4 h-4"></i>
                 </button>
-                <button onclick="wyloguj()" class="p-2 rounded-full hover:bg-white/10 transition text-red-200" title="Wyloguj">
+                <button type="button" onclick="wyloguj()" class="icon-btn" title="Wyloguj" aria-label="Wyloguj">
                     <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
             </div>
         </header>
 
         <!-- ZAWARTOŚĆ ZAKŁADEK -->
-        <main class="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
+        <main id="app-main" class="app-main">
 
             <!-- 1. PULPIT -->
-            <section id="tab-pulpit" class="space-y-4">
-                <!-- Panel wyboru trybu filtrowania na pulpicie -->
-                <div class="bg-[var(--bg)] p-3 rounded-2xl space-y-2">
-                    <div class="flex gap-2 text-xs">
-                        <button onclick="zmienTrybFiltraPulpit('miesiac')" id="btn-pulpit-miesiac" class="flex-1 py-1.5 rounded-xl font-semibold transition bg-[var(--accent)] text-white">Miesiąc</button>
-                        <button onclick="zmienTrybFiltraPulpit('zakres')" id="btn-pulpit-zakres" class="flex-1 py-1.5 rounded-xl font-semibold transition bg-transparent text-[var(--muted)]">Zakres dat</button>
+            <section id="tab-pulpit" class="view" aria-labelledby="app-title">
+                <!-- Stan pusty (10.3) -->
+                <div id="pulpit-pusty" class="hidden card span-all text-center py-10 space-y-4">
+                    <p class="text-sm">Nie masz jeszcze transakcji. Zacznij od importu wyciągu.</p>
+                    <button type="button" onclick="zmienZakladke('import')" class="btn-primary max-w-xs mx-auto">Przejdź do importu</button>
+                </div>
+
+                <!-- Wybór okresu -->
+                <div class="card span-all space-y-2 pulpit-tresc">
+                    <div class="flex gap-2" role="group" aria-label="Tryb wyboru okresu">
+                        <button type="button" onclick="zmienTrybFiltraPulpit('miesiac')" id="btn-pulpit-miesiac" class="chip is-active flex-1 min-[900px]:flex-none">Miesiąc</button>
+                        <button type="button" onclick="zmienTrybFiltraPulpit('zakres')" id="btn-pulpit-zakres" class="chip flex-1 min-[900px]:flex-none">Zakres dat</button>
                     </div>
-                    <!-- Wybór miesiąca -->
-                    <div id="pulpit-kontener-miesiac" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar"></div>
-                    <!-- Wybór zakresu dat -->
-                    <div id="pulpit-kontener-zakres" class="hidden grid grid-cols-2 gap-2">
+                    <div id="pulpit-kontener-miesiac" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar min-[900px]:flex-wrap"></div>
+                    <div id="pulpit-kontener-zakres" class="hidden grid grid-cols-2 gap-2 min-[900px]:max-w-md">
                         <div>
-                            <label class="block text-[10px] text-[var(--muted)] mb-0.5">Od</label>
-                            <input type="date" id="pulpit-data-od" onchange="zmienZakresPulpit()" class="w-full p-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs">
+                            <label for="pulpit-data-od" class="field-label">Od</label>
+                            <input type="date" id="pulpit-data-od" onchange="zmienZakresPulpit()" class="input">
                         </div>
                         <div>
-                            <label class="block text-[10px] text-[var(--muted)] mb-0.5">Do</label>
-                            <input type="date" id="pulpit-data-do" onchange="zmienZakresPulpit()" class="w-full p-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs">
+                            <label for="pulpit-data-do" class="field-label">Do</label>
+                            <input type="date" id="pulpit-data-do" onchange="zmienZakresPulpit()" class="input">
                         </div>
                     </div>
                 </div>
 
-                <div id="alert-bez-kategorii" class="hidden bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 p-3 rounded-2xl flex justify-between items-center cursor-pointer" onclick="przejdzDoBezKategorii()">
-                    <div class="flex items-center gap-2 text-amber-800 dark:text-amber-200 text-sm">
+                <button type="button" id="alert-bez-kategorii" onclick="przejdzDoBezKategorii()" class="hidden span-all w-full text-left p-3 rounded-[14px] flex justify-between items-center border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-100">
+                    <span class="flex items-center gap-2 text-sm">
                         <i data-lucide="alert-circle" class="w-5 h-5 text-amber-600 shrink-0"></i>
                         <span id="alert-tekst">Transakcje czekają na kategorię</span>
-                    </div>
+                    </span>
                     <i data-lucide="chevron-right" class="w-4 h-4 text-amber-600"></i>
+                </button>
+
+                <div class="tiles span-all pulpit-tresc">
+                    <div class="card">
+                        <span class="tile-label">Przychody</span>
+                        <p class="tile-value kwota text-[var(--c-income)]" id="pulpit-przychody">0 zł</p>
+                    </div>
+                    <div class="card">
+                        <span class="tile-label">Wydatki</span>
+                        <p class="tile-value kwota text-[var(--c-spend)]" id="pulpit-wydatki">0 zł</p>
+                    </div>
+                    <div class="card">
+                        <span class="tile-label">Na subkonta (netto)</span>
+                        <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-oszczednosci">0 zł</p>
+                        <span class="tile-note" id="pulpit-stopa-proc">0% przychodów</span>
+                    </div>
+                    <div class="card">
+                        <span class="tile-label">Zostało na koncie</span>
+                        <p class="tile-value kwota" id="pulpit-zostalo">0 zł</p>
+                    </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Przychody</span>
-                        <h2 class="text-lg font-bold text-[var(--c-income)] tabular-nums mt-0.5" id="pulpit-przychody">0 zł</h2>
-                    </div>
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Wydatki</span>
-                        <h2 class="text-lg font-bold text-[var(--c-spend)] tabular-nums mt-0.5" id="pulpit-wydatki">0 zł</h2>
-                    </div>
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Na subkonta (netto)</span>
-                        <h2 class="text-lg font-bold text-[var(--c-save)] tabular-nums mt-0.5" id="pulpit-oszczednosci">0 zł</h2>
-                        <span class="text-[10px] text-[var(--muted)] block mt-0.5" id="pulpit-stopa-proc">0% przychodów</span>
-                    </div>
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Zostało na koncie</span>
-                        <h2 class="text-lg font-bold tabular-nums mt-0.5" id="pulpit-zostalo">0 zł</h2>
-                    </div>
-                </div>
-
-                <div class="bg-[var(--bg)] p-4 rounded-2xl space-y-3">
-                    <h3 class="font-semibold text-sm">Wydatki według kategorii</h3>
-                    <div id="pulpit-kategorie-lista" class="space-y-2 text-sm"></div>
+                <div class="card span-all space-y-3 pulpit-tresc">
+                    <h2 class="font-semibold text-sm">Wydatki według kategorii</h2>
+                    <div id="pulpit-kategorie-lista" class="split-list text-sm"></div>
                 </div>
             </section>
 
             <!-- 2. TRANSAKCJE -->
-            <section id="tab-transakcje" class="hidden space-y-3">
-                <div class="flex gap-2">
-                    <button onclick="zmienFiltrTransakcji('wszystkie')" id="btn-filtr-wszystkie" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-[var(--accent)] text-white transition">Wszystkie</button>
-                    <button onclick="zmienFiltrTransakcji('brak')" id="btn-filtr-brak" class="px-4 py-1.5 rounded-full text-xs font-semibold bg-gray-200 dark:bg-gray-800 text-[var(--muted)] transition">Bez kategorii (<span id="licznik-brak">0</span>)</button>
+            <section id="tab-transakcje" class="hidden view">
+                <div class="span-all flex gap-2" role="group" aria-label="Filtr transakcji">
+                    <button type="button" onclick="zmienFiltrTransakcji('wszystkie')" id="btn-filtr-wszystkie" class="chip is-active bg-[var(--surface)]">Wszystkie</button>
+                    <button type="button" onclick="zmienFiltrTransakcji('brak')" id="btn-filtr-brak" class="chip bg-[var(--surface)]">Bez kategorii (<span id="licznik-brak">0</span>)</button>
                 </div>
-                <div id="lista-transakcji" class="space-y-2"></div>
+                <div id="lista-transakcji" class="span-all card-grid"></div>
             </section>
 
             <!-- 3. IMPORT CSV -->
-            <section id="tab-import" class="hidden space-y-4">
-                <div id="import-krok-1" class="border-2 border-dashed border-gray-300 dark:border-gray-700 p-8 rounded-2xl text-center cursor-pointer hover:border-[var(--accent)] transition" onclick="document.getElementById('csv-file-input').click()">
+            <section id="tab-import" class="hidden view">
+                <button type="button" id="import-krok-1" class="span-all card border-2 border-dashed border-[var(--border)] p-10 text-center hover:border-[var(--accent)] transition" onclick="document.getElementById('csv-file-input').click()">
                     <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto text-[var(--muted)] mb-2"></i>
-                    <p class="text-sm font-semibold mb-1">Wybierz plik CSV z banku Pekao SA</p>
-                    <p class="text-xs text-[var(--muted)]">Pekao24: Historia → Eksport → plik CSV</p>
-                    <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="obsluzPlikCSV(event)">
-                </div>
+                    <span class="block text-sm font-semibold mb-1">Wybierz plik CSV z banku Pekao SA</span>
+                    <span class="block text-xs text-[var(--muted)]">Pekao24: Historia → Eksport → plik CSV</span>
+                </button>
+                <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="obsluzPlikCSV(event)" aria-label="Plik CSV z wyciągiem">
 
-                <div id="import-krok-2" class="hidden space-y-3">
+                <div id="import-krok-2" class="hidden span-all space-y-3">
                     <div class="flex justify-between items-center">
-                        <h3 class="font-semibold text-sm">Podgląd pliku: <span id="import-nazwa-pliku" class="text-[var(--accent)]"></span></h3>
-                        <button onclick="resetujImport()" class="text-xs text-red-500 underline">Zmień plik</button>
+                        <h2 class="font-semibold text-sm">Podgląd pliku: <span id="import-nazwa-pliku" class="text-[var(--accent)]"></span></h2>
+                        <button type="button" onclick="resetujImport()" class="text-xs text-[var(--c-spend)] underline">Zmień plik</button>
                     </div>
-                    <div id="import-podgladz-kafelki" class="grid grid-cols-3 gap-2 text-center text-xs"></div>
-                    <div id="import-lista-preview" class="space-y-2 max-h-64 overflow-y-auto text-xs pr-1"></div>
-                    <button id="btn-zapisz-import" onclick="zapiszZaimportowaneTransakcje()" class="w-full bg-[var(--accent)] text-white py-3.5 rounded-2xl font-semibold text-sm shadow-md hover:opacity-90 transition">Zapisz nowe transakcje</button>
+                    <div id="import-podgladz-kafelki" class="grid grid-cols-3 gap-2 text-center text-xs min-[900px]:max-w-xl"></div>
+                    <div id="import-lista-preview" class="card-grid scroll-box text-xs pr-1"></div>
+                    <button type="button" id="btn-zapisz-import" onclick="zapiszZaimportowaneTransakcje()" class="btn-primary min-[900px]:max-w-sm">Zapisz nowe transakcje</button>
                 </div>
             </section>
 
             <!-- 4. CELE -->
-            <section id="tab-cele" class="hidden space-y-4">
-                <div class="bg-[var(--bg)] p-4 rounded-2xl flex justify-between items-center">
+            <section id="tab-cele" class="hidden view">
+                <div class="card span-all flex justify-between items-center">
                     <div>
-                        <span class="text-xs text-[var(--muted)]">Na subkontach razem</span>
-                        <h2 class="text-xl font-bold tabular-nums" id="cele-suma-ogolna">0 zł</h2>
+                        <span class="tile-label">Na subkontach razem</span>
+                        <p class="tile-value kwota" id="cele-suma-ogolna">0 zł</p>
                     </div>
-                    <button onclick="otworzFormularzCelu()" class="bg-[var(--accent)] text-white px-3 py-2 rounded-xl text-xs font-semibold">+ Nowy cel</button>
+                    <button type="button" onclick="otworzFormularzCelu()" class="chip is-active">+ Nowy cel</button>
                 </div>
-                <div id="lista-celow" class="space-y-3"></div>
 
                 <!-- Formularz dodawania / edycji celu -->
-                <div id="modal-cel" class="hidden bg-[var(--bg)] p-4 rounded-2xl space-y-3 border border-gray-200 dark:border-gray-700">
-                    <h3 class="font-semibold text-sm" id="modal-tytul">Dodaj nowy cel oszczędnościowy</h3>
-                    <form onsubmit="zapiszCel(event)" class="space-y-3 text-xs">
+                <div id="modal-cel" class="hidden card span-all space-y-3 border border-[var(--border)]">
+                    <h2 class="font-semibold text-sm" id="modal-tytul">Dodaj nowy cel oszczędnościowy</h2>
+                    <form onsubmit="zapiszCel(event)" class="grid gap-3 min-[900px]:grid-cols-2 text-xs">
                         <input type="hidden" id="cel-id">
-                        <div>
-                            <label class="block text-[var(--muted)] mb-1">Nazwa celu</label>
-                            <input type="text" id="cel-nazwa" required placeholder="np. Skarbonka na wakacje" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="block text-[var(--muted)] mb-1">Kwota docelowa (zł)</label>
-                                <input type="number" step="0.01" id="cel-kwota" required placeholder="14000" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-                            </div>
-                            <div>
-                                <label class="block text-[var(--muted)] mb-1">Termin</label>
-                                <input type="date" id="cel-termin" value="2026-12-31" required class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-                            </div>
+                        <div class="min-[900px]:col-span-2">
+                            <label for="cel-nazwa" class="field-label">Nazwa celu</label>
+                            <input type="text" id="cel-nazwa" required placeholder="np. Skarbonka na wakacje" class="input">
                         </div>
                         <div>
-                            <label class="block text-[var(--muted)] mb-1">Nr subkonta celu (wpłaty)</label>
-                            <input type="text" id="cel-keyword" required placeholder="26 cyfr numeru subkonta tego celu" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
-                            <p class="text-[10px] text-[var(--muted)] mt-1">Przelew na ten numer = wpłata do celu.</p>
+                            <label for="cel-kwota" class="field-label">Kwota docelowa (zł)</label>
+                            <input type="number" step="0.01" min="0" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input">
                         </div>
                         <div>
-                            <label class="block text-[var(--muted)] mb-1">Słowa kluczowe wypłat (po przecinku)</label>
-                            <p class="text-[10px] text-[var(--muted)] mb-1">Wypłaty ze wspólnego subkonta wypłat trafią do tego celu, gdy tytuł zawiera jedno z tych słów.</p>
-                            <input type="text" id="cel-keywords-out" placeholder="np. wakacje, bilety" class="w-full p-2.5 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+                            <label for="cel-termin" class="field-label">Termin</label>
+                            <input type="date" id="cel-termin" value="2026-12-31" required class="input">
                         </div>
-                        <div class="flex gap-2 pt-1">
-                            <button type="submit" class="flex-1 bg-[var(--accent)] text-white py-2 rounded-xl font-semibold">Zapisz cel</button>
-                            <button type="button" onclick="zamknijFormularzCelu()" class="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-xl font-semibold">Anuluj</button>
+                        <div>
+                            <label for="cel-keyword" class="field-label">Nr subkonta celu (wpłaty)</label>
+                            <input type="text" id="cel-keyword" required inputmode="numeric" placeholder="26 cyfr numeru subkonta tego celu" class="input" aria-describedby="cel-keyword-opis">
+                            <p id="cel-keyword-opis" class="text-[10px] text-[var(--muted)] mt-1">Przelew na ten numer = wpłata do celu.</p>
+                        </div>
+                        <div>
+                            <label for="cel-keywords-out" class="field-label">Słowa kluczowe wypłat (po przecinku)</label>
+                            <input type="text" id="cel-keywords-out" placeholder="np. wakacje, bilety" class="input" aria-describedby="cel-keywords-out-opis">
+                            <p id="cel-keywords-out-opis" class="text-[10px] text-[var(--muted)] mt-1">Wypłaty ze wspólnego subkonta wypłat trafią do tego celu, gdy tytuł zawiera jedno z tych słów.</p>
+                        </div>
+                        <div class="flex gap-2 pt-1 min-[900px]:col-span-2">
+                            <button type="submit" class="btn-primary flex-1 min-[900px]:flex-none min-[900px]:w-48">Zapisz cel</button>
+                            <button type="button" onclick="zamknijFormularzCelu()" class="btn-secondary">Anuluj</button>
                         </div>
                     </form>
                 </div>
+
+                <div id="lista-celow" class="span-all card-grid"></div>
             </section>
 
-            <!-- 5. STATYSTYKI -->
-            <section id="tab-statystyki" class="hidden space-y-4">
-                <!-- Panel filtrowania statystyk po zakresie dat -->
-                <div class="bg-[var(--bg)] p-3 rounded-2xl space-y-2">
-                    <div class="flex justify-between items-center text-xs font-semibold">
-                        <span class="text-[var(--muted)]">Zakres analizy statystyk</span>
-                        <button onclick="resetujFiltryStatystyki()" class="text-[var(--accent)] underline text-[10px]">Wyczyść filtry</button>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="block text-[10px] text-[var(--muted)] mb-0.5">Od</label>
-                            <input type="date" id="stat-data-od" onchange="odswiezStatystyki()" class="w-full p-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs">
-                        </div>
-                        <div>
-                            <label class="block text-[10px] text-[var(--muted)] mb-0.5">Do</label>
-                            <input type="date" id="stat-data-do" onchange="odswiezStatystyki()" class="w-full p-2 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-xs">
-                        </div>
-                    </div>
+            <!-- 5. STATYSTYKI (specyfikacja, rozdział 9): bieżący rok, od stycznia -->
+            <section id="tab-statystyki" class="hidden view">
+                <p id="stat-podtytul" class="span-all text-xs font-semibold text-[var(--muted)]"></p>
+
+                <!-- Stan pusty (10.3): mniej niż 2 miesiące danych w roku -->
+                <div id="stat-pusty" class="hidden card span-all text-center py-10 space-y-4">
+                    <p class="text-sm">Statystyki pojawią się po imporcie drugiego miesiąca.</p>
+                    <button type="button" onclick="zmienZakladke('import')" class="btn-primary max-w-xs mx-auto">Przejdź do importu</button>
                 </div>
 
-                <!-- Kafelki KPI podsumowania -->
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Średni przychód / m-c</span>
-                        <h3 class="text-base font-bold text-[var(--c-income)] tabular-nums mt-0.5" id="stat-sredni-przychod">0 zł</h3>
-                    </div>
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Średni wydatek / m-c</span>
-                        <h3 class="text-base font-bold text-[var(--c-spend)] tabular-nums mt-0.5" id="stat-sredni-wydatek">0 zł</h3>
-                    </div>
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Średnia stopa oszczędności</span>
-                        <h3 class="text-base font-bold text-[var(--c-save)] tabular-nums mt-0.5" id="stat-srednia-stopa">0%</h3>
-                    </div>
-                    <div class="bg-[var(--bg)] p-3 rounded-2xl">
-                        <span class="text-xs text-[var(--muted)] block">Bilans ogólny</span>
-                        <h3 class="text-base font-bold tabular-nums mt-0.5" id="stat-bilans-ogolny">0 zł</h3>
-                    </div>
+                <!-- 9.1 Kafelki wskaźników -->
+                <div id="stat-kafelki" class="tiles span-all stat-tresc"></div>
+
+                <div class="card span-all stat-tresc flex items-center justify-between gap-3 text-xs">
+                    <label for="stat-cel-stopy" class="text-[var(--muted)] font-semibold">Docelowa stopa oszczędności</label>
+                    <span class="flex items-center gap-1">
+                        <input type="number" id="stat-cel-stopy" min="0" max="100" step="1" inputmode="decimal" onchange="zmienDocelowaStope(this.value)" class="input !w-20 text-right kwota">
+                        <span>%</span>
+                    </span>
                 </div>
 
-                <!-- Wykres główny -->
-                <div class="bg-[var(--bg)] p-4 rounded-2xl space-y-3">
-                    <h3 class="font-semibold text-sm">Trendy finansowe</h3>
-                    <div class="w-full h-64 relative">
-                        <canvas id="wykresStatystyki"></canvas>
+                <!-- 9.2.1 Wydatki i oszczędności -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Wydatki i oszczędności</h2>
+                    <div id="stat-wykres-wydatki"></div>
+                    <div class="flex gap-4 justify-center text-[11px] text-[var(--muted)]">
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-spend)]"></span>Wydatki</span>
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-save)]"></span>Odłożone netto</span>
                     </div>
-                </div>
+                </article>
 
-                <!-- Top kategorie -->
-                <div class="bg-[var(--bg)] p-4 rounded-2xl space-y-3">
-                    <h3 class="font-semibold text-sm">Top 5 kategorii wydatków</h3>
-                    <div id="stat-top-kategorie" class="space-y-2 text-xs"></div>
-                </div>
+                <!-- 9.2.2 Stopa oszczędności -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Stopa oszczędności</h2>
+                    <div id="stat-wykres-stopa"></div>
+                    <ul id="stat-stopa-wyjasnienia" class="text-[11px] text-[var(--muted)] space-y-0.5"></ul>
+                </article>
+
+                <!-- 9.2.3 Struktura wydatków -->
+                <article class="card space-y-3 stat-tresc">
+                    <h2 class="font-semibold text-sm">Struktura wydatków</h2>
+                    <div id="stat-struktura-pasek" class="flex h-3 w-full rounded-full overflow-hidden" role="img" aria-label="Udział grup kategorii w wydatkach roku"></div>
+                    <table class="w-full text-xs">
+                        <thead class="text-[10px] text-[var(--muted)]">
+                            <tr><th class="text-left font-normal pb-1">Kategoria</th>
+                                <th class="text-right font-normal pb-1">Udział</th>
+                                <th class="text-right font-normal pb-1">Średnio / mies.</th></tr>
+                        </thead>
+                        <tbody id="stat-struktura-tabela"></tbody>
+                    </table>
+                </article>
+
+                <!-- 9.2.4 Trend kategorii -->
+                <article class="card space-y-3 stat-tresc">
+                    <h2 class="font-semibold text-sm">Trend kategorii</h2>
+                    <div id="stat-trend-przyciski" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" role="group" aria-label="Wybór kategorii"></div>
+                    <div id="stat-trend-wykres"></div>
+                </article>
+
+                <!-- 9.2.5 Odchylenia w ostatnim miesiącu -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm" id="stat-odchylenia-tytul">Odchylenia</h2>
+                    <p class="text-[10px] text-[var(--muted)]">Względem średniej z 3 poprzednich miesięcy</p>
+                    <div id="stat-odchylenia"></div>
+                    <p id="stat-odchylenia-dopisek" class="text-[10px] text-[var(--muted)] italic"></p>
+                </article>
+
+                <!-- 9.2.6 Saldo subkont -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Saldo subkont</h2>
+                    <div id="stat-wykres-saldo"></div>
+                </article>
+
+                <!-- 9.2.7 Porównanie lat -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Porównanie lat</h2>
+                    <div id="stat-porownanie-lat"></div>
+                </article>
             </section>
 
         </main>
 
-        <!-- POWADOMIENIE (TOAST) -->
-        <div id="toast-powiadomienie" class="hidden absolute bottom-20 left-4 right-4 bg-gray-900 text-white text-xs py-2.5 px-4 rounded-xl shadow-lg text-center z-50 transition opacity-90"></div>
-
-        <!-- DOLNY PANEL NAWIGACYJNY -->
-        <nav class="absolute bottom-0 left-0 right-0 bg-[var(--surface)] border-t border-gray-200 dark:border-gray-800 flex justify-around py-2 px-1 shadow-lg shrink-0">
-            <button onclick="zmienZakladke('pulpit')" class="nav-btn flex flex-col items-center text-[var(--accent)]" data-tab="pulpit">
-                <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
-                <span class="text-[10px] mt-1 font-semibold">Pulpit</span>
+        <!-- DOLNY PASEK ZAKŁADEK (telefon) / LEWA KOLUMNA (komputer) -->
+        <nav class="app-nav" aria-label="Główne zakładki">
+            <div class="nav-brand">
+                <span class="nav-brand-icon"><i data-lucide="wallet" class="w-5 h-5"></i></span>
+                Budżet Domowy
+            </div>
+            <button type="button" onclick="zmienZakladke('pulpit')" class="nav-btn is-active" data-tab="pulpit" aria-current="page">
+                <i data-lucide="layout-dashboard"></i>
+                <span class="nav-label">Pulpit</span>
             </button>
-            <button onclick="zmienZakladke('transakcje')" class="nav-btn flex flex-col items-center text-[var(--muted)] relative" data-tab="transakcje">
-                <i data-lucide="receipt" class="w-5 h-5"></i>
-                <span class="text-[10px] mt-1 font-semibold">Transakcje</span>
-                <span id="badge-transakcje" class="hidden absolute top-0 right-2 bg-[var(--c-spend)] text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">0</span>
+            <button type="button" onclick="zmienZakladke('transakcje')" class="nav-btn" data-tab="transakcje">
+                <i data-lucide="receipt"></i>
+                <span class="nav-label">Transakcje</span>
+                <span id="badge-transakcje" class="hidden nav-badge" aria-label="Transakcje bez kategorii">0</span>
             </button>
-            <button onclick="zmienZakladke('import')" class="nav-btn flex flex-col items-center text-[var(--muted)]" data-tab="import">
-                <i data-lucide="file-up" class="w-5 h-5"></i>
-                <span class="text-[10px] mt-1 font-semibold">Import</span>
+            <button type="button" onclick="zmienZakladke('import')" class="nav-btn" data-tab="import">
+                <i data-lucide="file-up"></i>
+                <span class="nav-label">Import</span>
             </button>
-            <button onclick="zmienZakladke('cele')" class="nav-btn flex flex-col items-center text-[var(--muted)]" data-tab="cele">
-                <i data-lucide="target" class="w-5 h-5"></i>
-                <span class="text-[10px] mt-1 font-semibold">Cele</span>
+            <button type="button" onclick="zmienZakladke('cele')" class="nav-btn" data-tab="cele">
+                <i data-lucide="target"></i>
+                <span class="nav-label">Cele</span>
             </button>
-            <button onclick="zmienZakladke('statystyki')" class="nav-btn flex flex-col items-center text-[var(--muted)]" data-tab="statystyki">
-                <i data-lucide="chart-column-stacked" class="w-5 h-5"></i>
-                <span class="text-[10px] mt-1 font-semibold">Statystyki</span>
+            <button type="button" onclick="zmienZakladke('statystyki')" class="nav-btn" data-tab="statystyki">
+                <i data-lucide="chart-column-stacked"></i>
+                <span class="nav-label">Statystyki</span>
             </button>
         </nav>
+
+        <!-- KOMUNIKAT (10.2) -->
+        <div id="toast-powiadomienie" class="hidden toast" role="status" aria-live="polite"></div>
     </div>
 
     <!-- LOGIKA APLIKACJI (kolejność ma znaczenie) -->
@@ -293,6 +329,7 @@
     <script src="js/state.js"></script>
     <script src="js/rules.js"></script>
     <script src="js/calc.js"></script>
+    <script src="js/wykresy.js"></script>
     <script src="js/db.js"></script>
     <script src="js/views/pulpit.js"></script>
     <script src="js/views/transakcje.js"></script>
