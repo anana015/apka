@@ -24,15 +24,32 @@ function czystyNumer(tekst) {
     return String(tekst || '').replace(/['"\s]+/g, '').toUpperCase();
 }
 
-// Liczba w polskim formacie: 12400.5 -> "12 400,5" (bez "-0")
+// Liczba w polskim formacie: 4996 -> "4 996", 12400.5 -> "12 400,5" (bez "-0").
+// Ręcznie, bo toLocaleString('pl-PL') nie grupuje liczb 4-cyfrowych („4996 zł”),
+// a specyfikacja (pkt 6) wymaga spacji jako separatora tysięcy. Spacja twarda – kwota się nie łamie.
 function liczba(wartosc, miejsca = 0) {
     const v = +Number(wartosc).toFixed(miejsca) || 0;
-    return v.toLocaleString('pl-PL', { minimumFractionDigits: miejsca, maximumFractionDigits: miejsca });
+    const [calkowite, ulamek] = Math.abs(v).toFixed(miejsca).split('.');
+    const zGrupami = calkowite.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${v < 0 ? '-' : ''}${zGrupami}${ulamek ? ',' + ulamek : ''}`;
 }
 
 // Grosze -> "12 345 zł" / "12 345,67 zł"
 function zl(grosze, miejsca = 0) {
     return `${liczba(grosze / 100, miejsca)} zł`;
+}
+
+// Klucz "2026-10" -> "Październik 2026" (wybór miesiąca, pkt 6 i 7.1).
+// Tablice nazw miesięcy są w calc.js (wywołanie dopiero po załadowaniu wszystkich plików).
+function nazwaMiesiaca(klucz) {
+    const m = Number(String(klucz).slice(5, 7));
+    return m ? `${MIESIACE_PELNE[m - 1]} ${String(klucz).slice(0, 4)}` : String(klucz);
+}
+
+// Klucz "2026-10" -> "październiku 2026" (do zdań „w …”)
+function nazwaMiesiacaMiejscownik(klucz) {
+    const m = Number(String(klucz).slice(5, 7));
+    return m ? `${MIESIACE_MIEJSCOWNIK[m - 1]} ${String(klucz).slice(0, 4)}` : String(klucz);
 }
 
 // Wartość zmiennej CSS (np. '--c-spend')

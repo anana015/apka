@@ -62,6 +62,9 @@
                 <button type="button" onclick="pobierzDane()" class="icon-btn" title="Odśwież" aria-label="Odśwież dane">
                     <i data-lucide="rotate-cw" class="w-4 h-4"></i>
                 </button>
+                <button type="button" onclick="zmienZakladke('ustawienia')" class="icon-btn" title="Ustawienia" aria-label="Ustawienia">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                </button>
                 <button type="button" onclick="wyloguj()" class="icon-btn" title="Wyloguj" aria-label="Wyloguj">
                     <i data-lucide="log-out" class="w-4 h-4"></i>
                 </button>
@@ -132,13 +135,25 @@
                 </div>
             </section>
 
-            <!-- 2. TRANSAKCJE -->
+            <!-- 2. TRANSAKCJE (specyfikacja 7.1) -->
             <section id="tab-transakcje" class="hidden view">
-                <div class="span-all flex gap-2" role="group" aria-label="Filtr transakcji">
-                    <button type="button" onclick="zmienFiltrTransakcji('wszystkie')" id="btn-filtr-wszystkie" class="chip is-active bg-[var(--surface)]">Wszystkie</button>
-                    <button type="button" onclick="zmienFiltrTransakcji('brak')" id="btn-filtr-brak" class="chip bg-[var(--surface)]">Bez kategorii (<span id="licznik-brak">0</span>)</button>
+                <div class="card span-all space-y-3">
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar" role="group" aria-label="Filtr transakcji">
+                        <button type="button" onclick="zmienFiltrTransakcji('wszystkie')" id="btn-filtr-wszystkie" class="chip is-active" aria-pressed="true">Wszystkie (<span id="licznik-wszystkie">0</span>)</button>
+                        <button type="button" onclick="zmienFiltrTransakcji('brak')" id="btn-filtr-brak" class="chip" aria-pressed="false">Do przypisania (<span id="licznik-brak">0</span>)</button>
+                        <button type="button" onclick="zmienFiltrTransakcji('przypisane')" id="btn-filtr-przypisane" class="chip" aria-pressed="false">Przypisane (<span id="licznik-przypisane">0</span>)</button>
+                    </div>
+                    <div id="transakcje-miesiace" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar min-[900px]:flex-wrap" role="group" aria-label="Wybór miesiąca"></div>
+                    <label class="flex items-center justify-between gap-3 text-xs pt-1 border-t border-[var(--border)]">
+                        <span class="pt-2">
+                            <span class="font-semibold block">Zapamiętaj kategorię dla podobnych transakcji</span>
+                            <span class="text-[10px] text-[var(--muted)]">Tworzy regułę z nazwy kontrahenta, np. ZABKA → Zakupy spożywcze</span>
+                        </span>
+                        <input type="checkbox" id="przelacznik-zapamietaj" role="switch" class="switch mt-2" checked onchange="zmienZapamietywanie(this.checked)">
+                    </label>
                 </div>
-                <div id="lista-transakcji" class="span-all card-grid"></div>
+                <p id="transakcje-podsumowanie" class="span-all text-[11px] text-[var(--muted)] kwota" aria-live="polite"></p>
+                <div id="lista-transakcji" class="span-all space-y-2"></div>
             </section>
 
             <!-- 3. IMPORT CSV -->
@@ -163,16 +178,23 @@
 
             <!-- 4. CELE -->
             <section id="tab-cele" class="hidden view">
-                <div class="card span-all flex justify-between items-center">
-                    <div>
+                <!-- 8.2 Kafelki: „Na subkontach” i „Wpłacone w [M]” -->
+                <div class="card flex justify-between items-center gap-3 cele-lista">
+                    <div class="min-w-0">
                         <span class="tile-label">Na subkontach razem</span>
                         <p class="tile-value kwota" id="cele-suma-ogolna">0 zł</p>
+                        <span class="tile-note" id="cele-suma-cel"></span>
                     </div>
                     <button type="button" onclick="otworzFormularzCelu()" class="chip is-active">+ Nowy cel</button>
                 </div>
+                <div class="card cele-lista">
+                    <span class="tile-label" id="cele-wplacone-etykieta">Wpłacone w tym miesiącu</span>
+                    <p class="tile-value kwota text-[var(--c-save)]" id="cele-wplacone">0 zł</p>
+                    <span class="tile-note" id="cele-wplacone-proc"></span>
+                </div>
 
                 <!-- Formularz dodawania / edycji celu -->
-                <div id="modal-cel" class="hidden card span-all space-y-3 border border-[var(--border)]">
+                <div id="modal-cel" class="hidden card span-all space-y-3 border border-[var(--border)] cele-lista">
                     <h2 class="font-semibold text-sm" id="modal-tytul">Dodaj nowy cel oszczędnościowy</h2>
                     <form onsubmit="zapiszCel(event)" class="grid gap-3 min-[900px]:grid-cols-2 text-xs">
                         <input type="hidden" id="cel-id">
@@ -205,7 +227,16 @@
                     </form>
                 </div>
 
-                <div id="lista-celow" class="span-all card-grid"></div>
+                <div id="lista-celow" class="span-all card-grid cele-lista"></div>
+
+                <!-- Cele zakończone (archived) – zwinięte pod listą -->
+                <details id="cele-zakonczone-box" class="hidden span-all cele-lista">
+                    <summary class="cursor-pointer text-xs font-semibold text-[var(--muted)] py-1">Zakończone cele (<span id="cele-zakonczone-licznik">0</span>)</summary>
+                    <div id="lista-celow-zakonczonych" class="card-grid mt-2"></div>
+                </details>
+
+                <!-- 8.3 Szczegóły celu (rysowane w cele.js) -->
+                <div id="cel-szczegoly" class="hidden span-all"></div>
             </section>
 
             <!-- 5. STATYSTYKI (specyfikacja, rozdział 9): bieżący rok, od stycznia -->
@@ -220,14 +251,6 @@
 
                 <!-- 9.1 Kafelki wskaźników -->
                 <div id="stat-kafelki" class="tiles span-all stat-tresc"></div>
-
-                <div class="card span-all stat-tresc flex items-center justify-between gap-3 text-xs">
-                    <label for="stat-cel-stopy" class="text-[var(--muted)] font-semibold">Docelowa stopa oszczędności</label>
-                    <span class="flex items-center gap-1">
-                        <input type="number" id="stat-cel-stopy" min="0" max="100" step="1" inputmode="decimal" onchange="zmienDocelowaStope(this.value)" class="input !w-20 text-right kwota">
-                        <span>%</span>
-                    </span>
-                </div>
 
                 <!-- 9.2.1 Wydatki i oszczędności -->
                 <article class="card space-y-2 stat-tresc">
@@ -288,6 +311,54 @@
                 </article>
             </section>
 
+            <!-- 6. USTAWIENIA (zębatka w nagłówku; specyfikacja 11.3 i 9.1) -->
+            <section id="tab-ustawienia" class="hidden view">
+                <button type="button" onclick="wrocZUstawien()" class="span-all justify-self-start text-sm font-semibold text-[var(--accent)]">‹ <span id="ust-wroc-nazwa">Pulpit</span></button>
+
+                <article class="card space-y-3">
+                    <h2 class="font-semibold text-sm">Budżet</h2>
+                    <div class="flex items-center justify-between gap-3 text-xs">
+                        <label for="stat-cel-stopy">
+                            <span class="font-semibold block">Docelowa stopa oszczędności</span>
+                            <span class="text-[10px] text-[var(--muted)]">Kafelek i wykres w Statystykach (domyślnie 15%)</span>
+                        </label>
+                        <span class="flex items-center gap-1">
+                            <input type="number" id="stat-cel-stopy" min="0" max="100" step="1" inputmode="decimal" onchange="zmienDocelowaStope(this.value)" class="input !w-20 text-right kwota">
+                            <span>%</span>
+                        </span>
+                    </div>
+                    <label class="flex items-center justify-between gap-3 text-xs border-t border-[var(--border)] pt-3">
+                        <span>
+                            <span class="font-semibold block">Zapamiętaj kategorię dla podobnych transakcji</span>
+                            <span class="text-[10px] text-[var(--muted)]">To samo co przełącznik w zakładce Transakcje</span>
+                        </span>
+                        <input type="checkbox" id="ust-zapamietaj" role="switch" class="switch" onchange="zmienZapamietywanie(this.checked)">
+                    </label>
+                </article>
+
+                <article class="card space-y-3">
+                    <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
+                    <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
+                    <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
+                    <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami i celami. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                </article>
+
+                <article class="card space-y-3">
+                    <h2 class="font-semibold text-sm">Eksport do Excela</h2>
+                    <div>
+                        <label for="ust-eksport-okres" class="field-label">Okres</label>
+                        <select id="ust-eksport-okres" class="input"></select>
+                    </div>
+                    <button type="button" onclick="eksportujCSV()" class="btn-secondary w-full">Pobierz plik CSV</button>
+                    <p class="text-[10px] text-[var(--muted)]">Kolumny A–F: Data, Kontrahent, Tytuł, Kwota, Typ, Kategoria / cel. Separator średnik – plik otwiera się wprost w polskim Excelu.</p>
+                </article>
+
+                <article class="card space-y-1">
+                    <h2 class="font-semibold text-sm">Konto</h2>
+                    <p id="ust-konto" class="text-xs text-[var(--muted)]"></p>
+                </article>
+            </section>
+
         </main>
 
         <!-- DOLNY PASEK ZAKŁADEK (telefon) / LEWA KOLUMNA (komputer) -->
@@ -312,6 +383,7 @@
             <button type="button" onclick="zmienZakladke('cele')" class="nav-btn" data-tab="cele">
                 <i data-lucide="target"></i>
                 <span class="nav-label">Cele</span>
+                <span id="badge-cele" class="hidden nav-badge" aria-label="Cele ze statusem Za wolno">0</span>
             </button>
             <button type="button" onclick="zmienZakladke('statystyki')" class="nav-btn" data-tab="statystyki">
                 <i data-lucide="chart-column-stacked"></i>
@@ -336,6 +408,7 @@
     <script src="js/views/import.js"></script>
     <script src="js/views/cele.js"></script>
     <script src="js/views/statystyki.js"></script>
+    <script src="js/views/ustawienia.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

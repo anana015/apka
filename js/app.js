@@ -69,14 +69,22 @@ function pokazKomunikat(tresc) {
 
 const TYTULY_ZAKLADEK = {
     pulpit: 'Pulpit', transakcje: 'Transakcje', import: 'Import CSV',
-    cele: 'Cele oszczędnościowe', statystyki: 'Statystyki'
+    cele: 'Cele oszczędnościowe', statystyki: 'Statystyki', ustawienia: 'Ustawienia'
 };
 
 // Klik w zakładkę: zamyka otwarte szczegóły, czyści filtr i przewija na górę (10.1).
 // opcje.filtr pozwala wejść na zakładkę z ustawionym filtrem (np. z alertu na pulpicie).
 function zmienZakladke(nazwa, opcje = {}) {
+    // Ustawienia nie są zakładką paska – zapamiętujemy, skąd przyszliśmy („‹ Wróć”)
+    if (nazwa === 'ustawienia' && stan.zakladka !== 'ustawienia') stan.poprzedniaZakladka = stan.zakladka;
     stan.zakladka = nazwa;
     stan.filtrTransakcji = opcje.filtr || 'wszystkie';
+    if (nazwa === 'transakcje') {
+        // „Do przypisania” z pulpitu obejmuje wszystkie miesiące (7.1);
+        // zwykłe wejście pokazuje ten sam miesiąc, który jest wybrany na Pulpicie.
+        stan.miesiacTransakcji = opcje.filtr === 'brak' ? null : (stan.miesiacWybrany || null);
+    }
+    stan.otwartyCel = null; // klik w zakładkę zamyka otwarte szczegóły (10.1)
     zamknijFormularzCelu();
 
     document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
@@ -102,6 +110,7 @@ function odswiezAktywnyEkran() {
     if (stan.zakladka === 'transakcje') odswiezTransakcje();
     if (stan.zakladka === 'cele') odswiezCele();
     if (stan.zakladka === 'statystyki') odswiezStatystyki();
+    if (stan.zakladka === 'ustawienia') odswiezUstawienia();
 }
 
 function odswiezInterfejs() {
@@ -111,6 +120,12 @@ function odswiezInterfejs() {
         badge.innerText = bezKat;
         badge.classList.remove('hidden');
     } else badge.classList.add('hidden');
+
+    // Licznik na zakładce „Cele” = liczba celów „Za wolno” (8.2)
+    const zaWolno = liczCeleZaWolno();
+    const badgeCele = document.getElementById('badge-cele');
+    badgeCele.innerText = zaWolno;
+    badgeCele.classList.toggle('hidden', zaWolno === 0);
 
     odswiezAktywnyEkran();
 }

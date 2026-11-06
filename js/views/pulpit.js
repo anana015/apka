@@ -44,9 +44,10 @@ function odswiezPulpit() {
     const kontenerMiesiace = document.getElementById('pulpit-kontener-miesiac');
     const miesiace = Array.from(new Set(stan.transakcje.map(t => t.booked_on.substring(0, 7)))).sort().reverse();
 
+    // Etykiety miesięcy jak w specyfikacji (pkt 6): „Październik 2026”
     kontenerMiesiace.innerHTML = miesiace.map(m => {
         const wybrany = m === stan.miesiacWybrany;
-        return `<button type="button" onclick="wybierzMiesiacPulpit('${esc(m)}')" class="chip ${wybrany ? 'is-active' : ''}" ${wybrany ? 'aria-pressed="true"' : 'aria-pressed="false"'}>${esc(m)}</button>`;
+        return `<button type="button" onclick="wybierzMiesiacPulpit('${esc(m)}')" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(nazwaMiesiaca(m))}</button>`;
     }).join('');
 
     let transOkres = [];
