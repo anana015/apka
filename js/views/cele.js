@@ -5,9 +5,11 @@
 function odswiezCele() {
     const lista = document.getElementById('lista-celow');
 
+    // Stan pusty (10.3): zachęta + od razu otwarty formularz
     if (!stan.cele || stan.cele.length === 0) {
-        lista.innerHTML = `<div class="text-center text-xs text-[var(--muted)] py-6">Brak celów. Kliknij "+ Nowy cel".</div>`;
+        lista.innerHTML = `<div class="card text-center text-xs text-[var(--muted)] py-6">Dodaj pierwszy cel, np. poduszkę finansową.</div>`;
         document.getElementById('cele-suma-ogolna').innerText = `0 zł`;
+        otworzFormularzCelu();
         return;
     }
 
@@ -20,29 +22,29 @@ function odswiezCele() {
         sumaOgolnaGr += zebraneGr;
 
         return `
-            <div class="bg-[var(--bg)] p-4 rounded-2xl space-y-2.5">
-                <div class="flex justify-between items-center text-xs">
-                    <div>
-                        <h4 class="font-bold text-sm text-gray-900 dark:text-gray-100">${esc(c.name)}</h4>
-                        <span class="text-[10px] text-[var(--muted)] block">Subkonto: ${esc(c.keyword || 'brak')}</span>
-                        ${c.keywords_out ? `<span class="text-[10px] text-[var(--muted)] block">Słowa wypłat: ${esc(c.keywords_out)}</span>` : ''}
+            <article class="card space-y-2.5">
+                <div class="flex justify-between items-start gap-2 text-xs">
+                    <div class="min-w-0">
+                        <h3 class="font-bold text-sm truncate">${esc(c.name)}</h3>
+                        <span class="text-[10px] text-[var(--muted)] block truncate">Subkonto: ${esc(c.keyword || 'brak')}</span>
+                        ${c.keywords_out ? `<span class="text-[10px] text-[var(--muted)] block truncate">Słowa wypłat: ${esc(c.keywords_out)}</span>` : ''}
                     </div>
-                    <div class="text-right">
-                        <span class="font-bold tabular-nums text-[var(--c-save)]">${zl(zebraneGr)}</span>
+                    <div class="text-right whitespace-nowrap">
+                        <span class="font-bold kwota text-[var(--c-save)]">${zl(zebraneGr)}</span>
                         <span class="text-[10px] text-[var(--muted)]"> / ${zl(c.target_gr)}</span>
                     </div>
                 </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-700 h-2.5 rounded-full overflow-hidden">
+                <div class="w-full bg-[var(--bg)] h-2.5 rounded-full overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${procent}" aria-label="Postęp celu ${esc(c.name)}">
                     <div class="bg-[var(--c-save)] h-full transition-all duration-500" style="width: ${procent}%;"></div>
                 </div>
-                <div class="flex justify-between items-center text-[10px] text-[var(--muted)]">
+                <div class="flex justify-between items-center text-[11px] text-[var(--muted)]">
                     <span>Postęp: ${procent}%</span>
-                    <div class="space-x-2">
-                        <button onclick="otworzFormularzCelu('${esc(c.id)}')" class="text-[var(--accent)] font-semibold hover:underline">Edytuj</button>
-                        <button onclick="usunCel('${esc(c.id)}')" class="text-red-500 hover:underline">Usuń</button>
+                    <div class="space-x-3">
+                        <button type="button" onclick="otworzFormularzCelu('${esc(c.id)}')" class="text-[var(--accent)] font-semibold hover:underline">Edytuj</button>
+                        <button type="button" onclick="usunCel('${esc(c.id)}')" class="text-[var(--c-spend)] hover:underline">Usuń</button>
                     </div>
                 </div>
-            </div>
+            </article>
         `;
     }).join('');
 
@@ -60,6 +62,9 @@ function otworzFormularzCelu(id = null) {
     document.getElementById('cel-termin').value = (cel && cel.deadline) || '2026-12-31';
     document.getElementById('cel-keyword').value = cel ? (cel.keyword || '') : '';
     document.getElementById('cel-keywords-out').value = cel ? (cel.keywords_out || '') : '';
+
+    // Formularz jest nad listą – przewijamy do niego przy edycji z dołu listy
+    if (id) document.getElementById('modal-cel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function zamknijFormularzCelu() {
@@ -89,7 +94,7 @@ async function zapiszCel(e) {
     } else {
         zamknijFormularzCelu();
         pobierzDane();
-        pokazKomunikat('Zapisano cel');
+        pokazKomunikat(id ? 'Zapisano cel' : 'Dodano nowy cel');
     }
 }
 

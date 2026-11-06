@@ -81,19 +81,19 @@ function parsowanieWierszy(wiersze) {
     document.getElementById('import-krok-2').classList.remove('hidden');
 
     document.getElementById('import-podgladz-kafelki').innerHTML = `
-        <div class="bg-[var(--bg)] p-2 rounded-xl"><span class="block font-bold text-green-600">${noweLicznik}</span>Nowe</div>
-        <div class="bg-[var(--bg)] p-2 rounded-xl"><span class="block font-bold text-gray-400">${duplikatyLicznik}</span>Duplikaty</div>
-        <div class="bg-[var(--bg)] p-2 rounded-xl"><span class="block font-bold text-[var(--accent)]">${przygotowaneTransakcjeCSV.length}</span>Wszystkie</div>
+        <div class="card !p-2"><span class="block font-bold kwota text-[var(--c-income)]">${noweLicznik}</span>Nowe</div>
+        <div class="card !p-2"><span class="block font-bold kwota text-[var(--muted)]">${duplikatyLicznik}</span>Duplikaty</div>
+        <div class="card !p-2"><span class="block font-bold kwota text-[var(--accent)]">${przygotowaneTransakcjeCSV.length}</span>Wszystkie</div>
     `;
 
     document.getElementById('import-lista-preview').innerHTML = przygotowaneTransakcjeCSV.map(t => `
-        <div class="p-2.5 rounded-xl border ${t.czyDuplikat ? 'bg-gray-100 dark:bg-gray-800 opacity-50 border-transparent' : 'bg-[var(--bg)] border-gray-200 dark:border-gray-700'} flex justify-between items-center text-xs">
-            <div>
-                <p class="font-semibold text-gray-800 dark:text-gray-200">${esc(t.counterparty || t.title)}</p>
-                ${t.account_number ? `<span class="text-[10px] text-[var(--accent)] block font-mono">Konto: ${esc(t.account_number)}</span>` : ''}
+        <div class="card !p-2.5 flex justify-between items-center gap-2 text-xs ${t.czyDuplikat ? 'opacity-50' : ''}">
+            <div class="min-w-0">
+                <p class="font-semibold truncate">${esc(t.counterparty || t.title)}</p>
+                ${t.account_number ? `<span class="text-[10px] text-[var(--accent)] block font-mono truncate">Konto: ${esc(t.account_number)}</span>` : ''}
                 <span class="text-[10px] text-[var(--muted)]">${esc(t.booked_on)} ${t.czyDuplikat ? '(Już zapisana)' : ''}</span>
             </div>
-            <span class="font-bold tabular-nums ${t.amount_gr < 0 ? 'text-[var(--c-spend)]' : 'text-[var(--c-income)]'}">${(t.amount_gr / 100).toFixed(2)} zł</span>
+            <span class="font-bold kwota whitespace-nowrap ${t.amount_gr < 0 ? 'text-[var(--c-spend)]' : 'text-[var(--c-income)]'}">${(t.amount_gr / 100).toFixed(2)} zł</span>
         </div>
     `).join('');
 }
@@ -115,9 +115,11 @@ async function zapiszZaimportowaneTransakcje() {
 
     const btn = document.getElementById('btn-zapisz-import');
     btn.innerText = 'Zapisywanie w chmurze...';
+    btn.disabled = true;
 
     const { error } = await supabaseClient.from('transakcje').insert(doZapisu);
     btn.innerText = 'Zapisz nowe transakcje';
+    btn.disabled = false;
 
     if (error) {
         alert('Błąd podczas zapisywania: ' + error.message);

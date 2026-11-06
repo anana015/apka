@@ -12,24 +12,11 @@ function przeliczMiesiace() {
 
 function zmienTrybFiltraPulpit(tryb) {
     stan.trybFiltraPulpit = tryb;
-    const btnMiesiac = document.getElementById('btn-pulpit-miesiac');
-    const btnZakres = document.getElementById('btn-pulpit-zakres');
-    const kontMiesiac = document.getElementById('pulpit-kontener-miesiac');
-    const kontZakres = document.getElementById('pulpit-kontener-zakres');
-    const aktywny = 'flex-1 py-1.5 rounded-xl font-semibold transition bg-[var(--accent)] text-white';
-    const nieaktywny = 'flex-1 py-1.5 rounded-xl font-semibold transition bg-transparent text-[var(--muted)]';
-
-    if (tryb === 'miesiac') {
-        btnMiesiac.className = aktywny;
-        btnZakres.className = nieaktywny;
-        kontMiesiac.classList.remove('hidden');
-        kontZakres.classList.add('hidden');
-    } else {
-        btnZakres.className = aktywny;
-        btnMiesiac.className = nieaktywny;
-        kontZakres.classList.remove('hidden');
-        kontMiesiac.classList.add('hidden');
-    }
+    const miesiac = tryb === 'miesiac';
+    document.getElementById('btn-pulpit-miesiac').classList.toggle('is-active', miesiac);
+    document.getElementById('btn-pulpit-zakres').classList.toggle('is-active', !miesiac);
+    document.getElementById('pulpit-kontener-miesiac').classList.toggle('hidden', !miesiac);
+    document.getElementById('pulpit-kontener-zakres').classList.toggle('hidden', miesiac);
     odswiezPulpit();
 }
 
@@ -39,17 +26,27 @@ function zmienZakresPulpit() {
     odswiezPulpit();
 }
 
+function wybierzMiesiacPulpit(m) {
+    stan.miesiacWybrany = m;
+    odswiezPulpit();
+}
+
 function odswiezPulpit() {
+    // Stan pusty (10.3)
+    const brakDanych = stan.transakcje.length === 0;
+    document.getElementById('pulpit-pusty').classList.toggle('hidden', !brakDanych);
+    document.querySelectorAll('#tab-pulpit .pulpit-tresc').forEach(el => el.classList.toggle('hidden', brakDanych));
+    if (brakDanych) {
+        document.getElementById('alert-bez-kategorii').classList.add('hidden');
+        return;
+    }
+
     const kontenerMiesiace = document.getElementById('pulpit-kontener-miesiac');
     const miesiace = Array.from(new Set(stan.transakcje.map(t => t.booked_on.substring(0, 7)))).sort().reverse();
 
     kontenerMiesiace.innerHTML = miesiace.map(m => {
-        const isSelected = m === stan.miesiacWybrany;
-        return `
-            <button onclick="stan.miesiacWybrany='${esc(m)}'; odswiezPulpit();" class="px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${isSelected ? 'bg-[var(--accent)] text-white' : 'bg-[var(--bg)] text-[var(--muted)]'}">
-                ${esc(m)}
-            </button>
-        `;
+        const wybrany = m === stan.miesiacWybrany;
+        return `<button type="button" onclick="wybierzMiesiacPulpit('${esc(m)}')" class="chip ${wybrany ? 'is-active' : ''}" ${wybrany ? 'aria-pressed="true"' : 'aria-pressed="false"'}>${esc(m)}</button>`;
     }).join('');
 
     let transOkres = [];
@@ -82,10 +79,13 @@ function odswiezPulpit() {
         document.getElementById('alert-tekst').innerText = `${bezKatOgolem} transakcji czeka na kategorię lub skarbonkę`;
     } else alertBox.classList.add('hidden');
 
-    document.getElementById('pulpit-kategorie-lista').innerHTML = Object.entries(s.kategorie).map(([kat, kwota]) => `
-        <div class="flex justify-between items-center border-b border-gray-100 dark:border-gray-800 pb-1">
-            <span>${esc(kat)}</span>
-            <span class="tabular-nums font-semibold">${zl(kwota, 2)}</span>
-        </div>
-    `).join('');
+    const posortowane = Object.entries(s.kategorie).sort((a, b) => b[1] - a[1]);
+    document.getElementById('pulpit-kategorie-lista').innerHTML = posortowane.length === 0
+        ? `<p class="text-[var(--muted)] text-xs">Brak wydatków w tym okresie.</p>`
+        : posortowane.map(([kat, kwota]) => `
+            <div class="flex justify-between items-center gap-2 border-b border-[var(--border)] pb-1.5">
+                <span class="flex items-center gap-2 min-w-0"><span class="dot" style="background:${kolorKategorii(kat)}"></span><span class="truncate">${esc(kat)}</span></span>
+                <span class="kwota font-semibold whitespace-nowrap">${zl(kwota, 2)}</span>
+            </div>
+        `).join('');
 }

@@ -8,19 +8,30 @@ function zmienFiltrTransakcji(typ) {
 }
 
 function przejdzDoBezKategorii() {
-    stan.filtrTransakcji = 'brak';
-    zmienZakladke('transakcje');
+    zmienZakladke('transakcje', { filtr: 'brak' });
 }
 
 function odswiezTransakcje() {
     const lista = document.getElementById('lista-transakcji');
 
+    // Podświetlenie aktywnego filtra
+    const brak = stan.filtrTransakcji === 'brak';
+    document.getElementById('btn-filtr-wszystkie').classList.toggle('is-active', !brak);
+    document.getElementById('btn-filtr-brak').classList.toggle('is-active', brak);
+
     let dane = stan.transakcje;
-    if (stan.filtrTransakcji === 'brak') {
+    if (brak) {
         dane = dane.filter(czyBezKategorii);
     }
 
     document.getElementById('licznik-brak').innerText = liczBezKategorii();
+
+    if (dane.length === 0) {
+        lista.innerHTML = `<div class="card text-center text-xs text-[var(--muted)] py-8">${
+            brak ? 'Wszystkie transakcje mają kategorię.' : 'Brak transakcji. Zaimportuj wyciąg w zakładce Import.'
+        }</div>`;
+        return;
+    }
 
     const opcjeKategorii = (wybrana) => stan.kategorie
         .map(k => `<option value="${esc(k.name)}" ${wybrana === k.name ? 'selected' : ''}>${esc(k.name)}</option>`)
@@ -29,12 +40,14 @@ function odswiezTransakcje() {
         .map(c => `<option value="${esc(PREFIKS_CELU + c.id)}" ${wybranyId === String(c.id) ? 'selected' : ''}>[Skarbonka] ${esc(c.name)}</option>`)
         .join('');
 
+    const klasaSelect = 'bg-[var(--surface)] text-[var(--fg)] border rounded-lg px-2 py-1 text-[11px] max-w-[11rem] focus:ring-1 focus:ring-[var(--accent)]';
+
     lista.innerHTML = dane.map(t => {
         const k = klasyfikuj(t);
         const kolorKwoty = {
             wydatek: 'text-[var(--c-spend)]',
             wplata: 'text-[var(--c-save)]',
-            wyplata: 'text-purple-600',
+            wyplata: 'text-purple-600 dark:text-purple-300',
             przychod: 'text-[var(--c-income)]',
             pominiete: 'text-[var(--muted)] line-through'
         }[k.typ];
@@ -43,24 +56,21 @@ function odswiezTransakcje() {
         let prawaKolumna;
 
         if (k.typ === 'wplata' && !k.celReczny) {
-            // Wpłata rozpoznana po numerze subkonta celu -> etykieta
-            prawaKolumna = `
-                <span class="text-[10px] bg-blue-100 dark:bg-blue-950 text-[var(--c-save)] px-2 py-1 rounded-lg font-semibold block">
-                    Wpłata: ${esc(k.cel.name)}
-                </span>
-            `;
+            // Wpłata rozpoznana po numerze subkonta celu -> etykieta statusu
+            prawaKolumna = `<span class="status-label text-[var(--c-save)]">Wpłata: ${esc(k.cel.name)}</span>`;
         } else if (k.typ === 'wyplata') {
             // Wypłata ze skarbonek -> wybór celu (żółta ramka, gdy nieprzypisana)
             const celId = k.cel ? String(k.cel.id) : null;
             prawaKolumna = `
-                <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Skarbonka, z której jest wypłata" class="bg-white dark:bg-gray-800 border ${k.cel ? 'border-gray-300 dark:border-gray-700' : 'border-amber-400 ring-1 ring-amber-400'} rounded-lg px-2 py-1 text-[10px] focus:ring-1 focus:ring-[var(--accent)]">
+                <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Skarbonka, z której jest wypłata" class="${klasaSelect} ${k.cel ? 'border-[var(--border)]' : 'border-amber-400 ring-1 ring-amber-400'}">
                     <option value="">${k.cel ? 'Automatycznie' : 'Z której skarbonki?'}</option>
                     ${stan.cele.map(c => `<option value="${esc(PREFIKS_CELU + c.id)}" ${celId === String(c.id) ? 'selected' : ''}>Wypłata: ${esc(c.name)}</option>`).join('')}
                 </select>
             `;
         } else {
+            const bezKat = k.typ === 'wydatek' && !k.kategoria;
             prawaKolumna = `
-                <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Kategoria transakcji" class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-2 py-1 text-[10px] focus:ring-1 focus:ring-[var(--accent)]">
+                <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Kategoria transakcji" class="${klasaSelect} ${bezKat ? 'border-amber-400 ring-1 ring-amber-400' : 'border-[var(--border)]'}">
                     <option value="">Wybierz kategorię...</option>
                     <optgroup label="Zwykłe kategorie">${opcjeKategorii(k.kategoria)}</optgroup>
                     <optgroup label="Skarbonki">${opcjeCelow(wybranyCelId)}</optgroup>
@@ -70,23 +80,23 @@ function odswiezTransakcje() {
         }
 
         return `
-            <div class="bg-[var(--bg)] p-3 rounded-2xl flex justify-between items-start gap-2 text-xs">
+            <article class="card flex justify-between items-start gap-3 text-xs">
                 <div class="flex-1 min-w-0">
-                    <p class="font-semibold text-gray-900 dark:text-gray-100 truncate">${esc(t.counterparty || 'Brak kontrahenta')}</p>
+                    <p class="font-semibold truncate">${esc(t.counterparty || 'Brak kontrahenta')}</p>
                     ${t.title ? `<p class="text-[11px] text-[var(--muted)] line-clamp-2 mt-0.5 leading-tight">${esc(t.title)}</p>` : ''}
-                    ${t.account_number ? `<p class="text-[10px] text-[var(--accent)] font-mono mt-0.5">Konto: ${esc(t.account_number)}</p>` : ''}
-                    <span class="inline-block text-[10px] text-gray-400 mt-1">${esc(t.booked_on)}</span>
+                    ${t.account_number ? `<p class="text-[10px] text-[var(--accent)] font-mono mt-0.5 truncate">Konto: ${esc(t.account_number)}</p>` : ''}
+                    <time class="inline-block text-[10px] text-[var(--muted)] mt-1" datetime="${esc(t.booked_on)}">${esc(t.booked_on)}</time>
                 </div>
                 <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
-                    <div class="flex items-center gap-2">
-                        <span class="font-bold tabular-nums ${kolorKwoty}">${(t.amount_gr / 100).toFixed(2)} zł</span>
-                        <button onclick="usunTransakcje('${esc(t.id)}')" class="text-gray-400 hover:text-red-500 transition p-1" title="Usuń transakcję" aria-label="Usuń transakcję">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                    <div class="flex items-center gap-1">
+                        <span class="font-bold kwota ${kolorKwoty}">${(t.amount_gr / 100).toFixed(2)} zł</span>
+                        <button type="button" onclick="usunTransakcje('${esc(t.id)}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1" title="Usuń transakcję" aria-label="Usuń transakcję">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                         </button>
                     </div>
                     <div>${prawaKolumna}</div>
                 </div>
-            </div>
+            </article>
         `;
     }).join('');
 }

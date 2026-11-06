@@ -22,6 +22,7 @@ async function obsluzLogowanie(e) {
     const btn = document.getElementById('btn-login');
 
     btn.innerText = 'Logowanie...';
+    btn.disabled = true;
     errorBox.classList.add('hidden');
 
     try {
@@ -37,6 +38,7 @@ async function obsluzLogowanie(e) {
         errorBox.classList.remove('hidden');
     }
     btn.innerText = 'Zaloguj się';
+    btn.disabled = false;
 }
 
 async function wyloguj() {
@@ -55,27 +57,43 @@ function pokazEkranLogowania() {
     document.getElementById('ekran-logowania').classList.remove('hidden');
 }
 
+// Komunikat nad paskiem zakładek, znika po 2,6 s (10.2)
+let toastTimer = null;
 function pokazKomunikat(tresc) {
     const toast = document.getElementById('toast-powiadomienie');
     toast.innerText = tresc;
     toast.classList.remove('hidden');
-    setTimeout(() => toast.classList.add('hidden'), 2600);
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.add('hidden'), 2600);
 }
 
-function zmienZakladke(nazwa) {
+const TYTULY_ZAKLADEK = {
+    pulpit: 'Pulpit', transakcje: 'Transakcje', import: 'Import CSV',
+    cele: 'Cele oszczędnościowe', statystyki: 'Statystyki'
+};
+
+// Klik w zakładkę: zamyka otwarte szczegóły, czyści filtr i przewija na górę (10.1).
+// opcje.filtr pozwala wejść na zakładkę z ustawionym filtrem (np. z alertu na pulpicie).
+function zmienZakladke(nazwa, opcje = {}) {
     stan.zakladka = nazwa;
+    stan.filtrTransakcji = opcje.filtr || 'wszystkie';
+    zamknijFormularzCelu();
+
     document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
     document.getElementById(`tab-${nazwa}`).classList.remove('hidden');
 
     document.querySelectorAll('.nav-btn').forEach(btn => {
         const aktywna = btn.dataset.tab === nazwa;
-        btn.classList.toggle('text-[var(--accent)]', aktywna);
-        btn.classList.toggle('text-[var(--muted)]', !aktywna);
+        btn.classList.toggle('is-active', aktywna);
+        if (aktywna) btn.setAttribute('aria-current', 'page');
+        else btn.removeAttribute('aria-current');
     });
 
-    const tytuly = { pulpit: 'Pulpit', transakcje: 'Transakcje', import: 'Import CSV', cele: 'Cele oszczędnościowe', statystyki: 'Statystyki' };
-    document.getElementById('app-title').innerText = tytuly[nazwa] || 'Budżet';
+    const tytul = TYTULY_ZAKLADEK[nazwa] || 'Budżet';
+    document.getElementById('app-title').innerText = tytul;
+    document.title = `${tytul} · Budżet Domowy`;
 
+    document.getElementById('app-main').scrollTop = 0;
     odswiezAktywnyEkran();
 }
 
@@ -96,6 +114,13 @@ function odswiezInterfejs() {
 
     odswiezAktywnyEkran();
 }
+
+// Wykres Chart.js nie reaguje sam na zmianę trybu jasny/ciemny – przerysowujemy go
+try {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (stan.zakladka === 'statystyki') odswiezStatystyki();
+    });
+} catch (e) {}
 
 // ---- Start ----
 try {
