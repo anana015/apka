@@ -1,0 +1,19 @@
+/* Kolory, czcionki i drobne komponenty (wg specyfikacji, punkt 10.4) */
+
+body { font-family: 'Source Sans 3', sans-serif; }
+h1, h2, h3, h4 { font-family: 'Bricolage Grotesque', sans-serif; }
+.tabular-nums { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+
+:root {
+    --bg: #F3F6F5; --surface: #FFFFFF; --fg: #17211F; --muted: #5A6B67;
+    --accent: #0D7367; --c-income: #2A7D4F; --c-spend: #B4472E; --c-save: #2F5FB3;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #121917; --surface: #1A2321; --fg: #E5ECEA; --muted: #9DB0AB;
+        --accent: #4FC2B2; --c-income: #5FCF8F; --c-spend: #F08A70; --c-save: #7FA6FF;
+    }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
