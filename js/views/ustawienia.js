@@ -133,14 +133,25 @@ function eksportujCSV() {
     const wiersze = [['Data', 'Kontrahent', 'Tytuł', 'Kwota', 'Typ', 'Kategoria / cel'].join(';')];
     for (const t of lista) {
         const k = klasyfikuj(t);
-        wiersze.push([
-            poleCSV(t.booked_on),
-            poleCSV(t.counterparty),
-            poleCSV(t.title),
-            poleCSV((t.amount_gr / 100).toFixed(2).replace('.', ','), false),
-            poleCSV(NAZWY_TYPOW[k.typ] || k.typ),
-            poleCSV(kategoriaLubCel(k))
-        ].join(';'));
+        // Podzielony wydatek: jeden wiersz na część, żeby sumy kategorii w Excelu się zgadzały
+        const czesci = k.podzial
+            ? k.podzial.map((c, i) => ({
+                tytul: `${t.title || ''} [część ${i + 1}/${k.podzial.length}]`,
+                kwota: c.amount_gr,
+                typ: c.category === POMIN ? NAZWY_TYPOW.pominiete : NAZWY_TYPOW.wydatek,
+                kategoria: c.category === POMIN ? '' : c.category
+            }))
+            : [{ tytul: t.title, kwota: t.amount_gr, typ: NAZWY_TYPOW[k.typ] || k.typ, kategoria: kategoriaLubCel(k) }];
+        for (const c of czesci) {
+            wiersze.push([
+                poleCSV(t.booked_on),
+                poleCSV(t.counterparty),
+                poleCSV(c.tytul),
+                poleCSV((c.kwota / 100).toFixed(2).replace('.', ','), false),
+                poleCSV(c.typ),
+                poleCSV(c.kategoria)
+            ].join(';'));
+        }
     }
 
     // BOM – Excel rozpozna UTF-8 i pokaże polskie znaki

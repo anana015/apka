@@ -7,6 +7,7 @@ let stan = {
     poprzedniaZakladka: 'pulpit', // skąd otwarto Ustawienia
     filtrTransakcji: 'wszystkie', // 'wszystkie' | 'brak' (do przypisania) | 'przypisane'
     miesiacTransakcji: null,      // 'RRRR-MM' albo null = wszystkie miesiące
+    podzial: null,                // edytowany podział: { id, czesci: [{ category, kwota }] }
     miesiacWybrany: null,
     trybFiltraPulpit: 'miesiac', // 'miesiac' lub 'zakres'
     pulpitDataOd: '',

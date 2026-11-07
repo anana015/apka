@@ -5,7 +5,7 @@
 // "Do przypisania": wydatek bez kategorii albo wypłata ze skarbonek bez celu.
 // Wersja przyjmująca gotową klasyfikację – żeby nie liczyć klasyfikuj() dwa razy.
 function czyKlasyfikacjaDoPrzypisania(k) {
-    return (k.typ === 'wydatek' && !k.kategoria) || (k.typ === 'wyplata' && !k.cel);
+    return (k.typ === 'wydatek' && !k.kategoria && !k.podzial) || (k.typ === 'wyplata' && !k.cel);
 }
 
 function czyBezKategorii(t) {
@@ -25,9 +25,15 @@ function podsumuj(lista) {
         if (k.typ === 'przychod') {
             s.przychody += kwota;
         } else if (k.typ === 'wydatek') {
-            s.wydatki += kwota;
-            const nazwa = k.kategoria || 'Nieprzypisane';
-            s.kategorie[nazwa] = (s.kategorie[nazwa] || 0) + kwota;
+            // Podzielony wydatek: każda część do swojej kategorii; część „Pomiń” nie wchodzi do sum
+            const czesci = k.podzial
+                ? k.podzial.map(c => ({ nazwa: c.category, kwota: Math.abs(c.amount_gr) }))
+                : [{ nazwa: k.kategoria || 'Nieprzypisane', kwota }];
+            for (const c of czesci) {
+                if (c.nazwa === POMIN) continue;
+                s.wydatki += c.kwota;
+                s.kategorie[c.nazwa] = (s.kategorie[c.nazwa] || 0) + c.kwota;
+            }
         } else if (k.typ === 'wplata') {
             s.wplaty += kwota;
         } else if (k.typ === 'wyplata') {

@@ -85,6 +85,7 @@ function zmienZakladke(nazwa, opcje = {}) {
         stan.miesiacTransakcji = opcje.filtr === 'brak' ? null : (stan.miesiacWybrany || null);
     }
     stan.otwartyCel = null; // klik w zakładkę zamyka otwarte szczegóły (10.1)
+    stan.podzial = null;    // i niezapisany podział transakcji
     zamknijFormularzCelu();
 
     document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));

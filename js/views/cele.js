@@ -129,15 +129,14 @@ function rysujListeCelow() {
     const lista = document.getElementById('lista-celow');
     const boxZakonczone = document.getElementById('cele-zakonczone-box');
 
-    // Stan pusty (10.3): zachęta + od razu otwarty formularz
+    // Stan pusty (10.3): zachęta; formularz otwiera się dopiero po „+ Nowy cel”
     if (!stan.cele || stan.cele.length === 0) {
-        lista.innerHTML = `<div class="card text-center text-xs text-[var(--muted)] py-6">Dodaj pierwszy cel, np. poduszkę finansową.</div>`;
+        lista.innerHTML = `<div class="card text-center text-xs text-[var(--muted)] py-6">Dodaj pierwszy cel, np. poduszkę finansową – kliknij „+ Nowy cel”.</div>`;
         document.getElementById('cele-suma-ogolna').innerText = `0 zł`;
         document.getElementById('cele-suma-cel').innerText = '';
         document.getElementById('cele-wplacone').innerText = '0 zł';
         document.getElementById('cele-wplacone-proc').innerText = '';
         boxZakonczone.classList.add('hidden');
-        otworzFormularzCelu();
         return;
     }
 

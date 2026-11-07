@@ -84,7 +84,18 @@ function dopasujRegule(t) {
     return null;
 }
 
+// Podział wydatku na 2–3 części: t.splits = [{ category, amount_gr }] (kwoty ujemne jak transakcja).
+// Uznajemy go tylko, gdy jest kompletny: każda część ma kategorię, a suma części = kwota transakcji.
+function podzialTransakcji(t) {
+    const p = t.splits;
+    if (!Array.isArray(p) || p.length < 2 || !(t.amount_gr < 0)) return null;
+    if (p.some(c => !c || !c.category || !(Number(c.amount_gr) < 0))) return null;
+    const suma = p.reduce((s, c) => s + Number(c.amount_gr), 0);
+    return suma === t.amount_gr ? p : null;
+}
+
 // typ: 'pominiete' | 'wplata' | 'wyplata' | 'przychod' | 'wydatek'
+// Wydatek podzielony ma kategoria = null i podzial = [...części].
 function klasyfikuj(t) {
     if (t.category_manual === POMIN) {
         return { typ: 'pominiete', cel: null, celReczny: false, kategoria: POMIN };
@@ -101,6 +112,8 @@ function klasyfikuj(t) {
     if (t.amount_gr > 0) {
         return { typ: 'przychod', cel: null, celReczny: false, kategoria: kategoriaReczna(t) };
     }
+    const podzial = podzialTransakcji(t);
+    if (podzial) return { typ: 'wydatek', cel: null, celReczny: false, kategoria: null, podzial };
     return { typ: 'wydatek', cel: null, celReczny: false, kategoria: kategoriaReczna(t) || dopasujRegule(t) };
 }
 
