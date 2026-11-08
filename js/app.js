@@ -150,8 +150,11 @@ const TYTULY_ZAKLADEK = {
     cele: 'Cele oszczędnościowe', statystyki: 'Statystyki', ustawienia: 'Ustawienia'
 };
 
+// W Ustawieniach tytuł mówi, na którym poziomie jesteśmy (np. „Kategorie”, „Czynsz”)
 function ustawTytulKarty() {
-    const tytul = TYTULY_ZAKLADEK[stan.zakladka] || 'Budżet';
+    const tytul = stan.zakladka === 'ustawienia'
+        ? tytulStronyUstawien()
+        : (TYTULY_ZAKLADEK[stan.zakladka] || 'Budżet');
     document.getElementById('app-title').innerText = tytul;
     document.title = `${tytul} · ${nazwaBudzetu()}`;
 }
@@ -160,8 +163,12 @@ function ustawTytulKarty() {
 // opcje pozwalają wejść na zakładkę z ustawionym filtrem (np. z Pulpitu):
 //   filtr ('brak' | 'przypisane'), kategoria, zakres { od, do }, miesiac ('RRRR-MM' | null)
 function zmienZakladke(nazwa, opcje = {}) {
-    // Ustawienia nie są zakładką paska – zapamiętujemy, skąd przyszliśmy („‹ Wróć”)
-    if (nazwa === 'ustawienia' && stan.zakladka !== 'ustawienia') stan.poprzedniaZakladka = stan.zakladka;
+    if (nazwa === 'ustawienia') {
+        // Ustawienia nie są zakładką paska – zapamiętujemy, skąd przyszliśmy („‹ Wróć”),
+        // a zębatka zawsze otwiera menu ustawień (pierwszy poziom)
+        if (stan.zakladka !== 'ustawienia') stan.poprzedniaZakladka = stan.zakladka;
+        resetujNawigacjeUstawien();
+    }
     stan.zakladka = nazwa;
     stan.filtrTransakcji = opcje.filtr || 'wszystkie';
     stan.filtrKategorii = opcje.kategoria || null;

@@ -36,7 +36,13 @@ let stan = {
     kategorieZBazy: false,        // false = brak tabeli categories, używamy listy z config.js
     kategoriaDoUsuniecia: null,   // id kategorii z otwartym potwierdzeniem usunięcia
     wyborKategorii: null,         // Set nazw zaznaczonych w „Wybierz kategorie z listy” albo null (zamknięte)
-    importy: null                 // historia importów (null = brak tabeli imports)
+    importy: null,                // historia importów (null = brak tabeli imports)
+
+    // Poziomy Ustawień (ustawienia.js): menu → strona → szczegóły kategorii
+    ustawieniaStrona: 'menu',     // 'menu' | 'kategorie' | 'kategoria' | 'reguly' | 'kontoWspolne' | 'dane' | 'preferencje'
+    ustawieniaKategoria: null,    // id kategorii otwartej w szczegółach (strona 'kategoria')
+    ustawieniaPowrot: null,       // { strona, kategoria } – dokąd cofa „‹” po skrócie (np. z kategorii do jej reguł)
+    kolejnoscKategorii: false     // tryb „Zmień kolejność” na liście kategorii
 };
 
 // Reguły posortowane od najnowszej (najnowsza pasująca wygrywa)
@@ -48,6 +54,7 @@ function nazwaBudzetu(budzet = stan.budzet) {
 
 // Dane i ustawienia widoku, które należą do jednego budżetu – czyszczone przy przełączeniu
 // budżetu i wylogowaniu, żeby nic nie „przeciekło” na ekran drugiego budżetu.
+// (Poziom Ustawień zostaje – ustawienia.js cofa go wyżej, gdy strona nie pasuje do nowego budżetu.)
 function wyczyscDaneBudzetu() {
     Object.assign(stan, {
         transakcje: [],
@@ -65,7 +72,8 @@ function wyczyscDaneBudzetu() {
         miesiacWybrany: null,
         otwartyCel: null,
         statKategoria: null,
-        kategoriaDoUsuniecia: null
+        kategoriaDoUsuniecia: null,
+        kolejnoscKategorii: false
     });
     dynamiczneReguly = [];
 }
