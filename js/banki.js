@@ -27,10 +27,21 @@ function komorkaZ(wiersz, i) {
 // ---- Alior Bank ------------------------------------------------------
 // Data transakcji;Data księgowania;Nazwa nadawcy;Nazwa odbiorcy;Szczegóły transakcji;
 // Kwota operacji;Waluta operacji;Kwota w walucie rachunku;Waluta rachunku;
-// Numer rachunku nadawcy;Numer rachunku odbiorcy   (daty DD-MM-RRRR, kwoty „-300.00”)
-// Kontrahent zależy od kierunku: przy wydatku „Nazwa odbiorcy”, przy wpływie „Nazwa nadawcy”
-// (w drugiej kolumnie jest właściciel rachunku). Kwota w walucie rachunku = PLN także
-// dla płatności kartą za granicą.
+// Numer rachunku nadawcy;Numer rachunku odbiorcy   (daty DD.MM.RRRR lub DD-MM-RRRR, kwoty „-44,2” / „-300.00”)
+// Kontrahent zależy od kierunku: przy wydatku „Nazwa odbiorcy”, przy wpływie „Nazwa nadawcy”.
+// Drugiej kolumny NIE używamy zastępczo – jest w niej właściciel rachunku (w prawdziwych
+// wyciągach często tylko ona jest wypełniona), a reguła „Zapamiętaj dla podobnych” z jego
+// nazwiska łapałaby potem wszystkie przelewy. Płatność kartą nie ma nazw ani rachunków –
+// kontrahenta bierzemy z początku szczegółów („Spotify P4898D70C7 Stockholm SE” -> „Spotify”).
+// Kwota w walucie rachunku = PLN także dla płatności kartą za granicą.
+
+// Początek opisu do pierwszego słowa z cyfrą (numer terminala / referencja), najwyżej 4 słowa
+function sprzedawcaZOpisu(opis) {
+    const slowa = String(opis || '').trim().split(/\s+/);
+    const koniec = slowa.findIndex(s => /\d/.test(s));
+    return slowa.slice(0, Math.min(koniec < 0 ? slowa.length : koniec, 4)).join(' ');
+}
+
 function czytnikAlior(naglowkiN) {
     const k = {
         data: kolumna(naglowkiN, 'DATA KSIEGOWANIA', 'DATA TRANSAKCJI'),
@@ -47,13 +58,16 @@ function czytnikAlior(naglowkiN) {
         const wplyw = (parsujKwote(kwota) || 0) > 0;
         const nadawca = komorkaZ(wiersz, k.nadawca);
         const odbiorca = komorkaZ(wiersz, k.odbiorca);
+        const tytul = komorkaZ(wiersz, k.tytul);
+        const rachunki = { zrodlowy: komorkaZ(wiersz, k.rachNadawcy), docelowy: komorkaZ(wiersz, k.rachOdbiorcy) };
+        const bezStron = !nadawca && !odbiorca && !rachunki.zrodlowy && !rachunki.docelowy; // płatność kartą
         return {
             data: komorkaZ(wiersz, k.data),
             kwota,
             waluta: komorkaZ(wiersz, k.waluta),
-            kontrahent: wplyw ? (nadawca || odbiorca) : (odbiorca || nadawca),
-            tytul: komorkaZ(wiersz, k.tytul),
-            rachunki: { zrodlowy: komorkaZ(wiersz, k.rachNadawcy), docelowy: komorkaZ(wiersz, k.rachOdbiorcy) }
+            kontrahent: (wplyw ? nadawca : odbiorca) || (bezStron ? sprzedawcaZOpisu(tytul) : ''),
+            tytul,
+            rachunki
         };
     };
 }
@@ -111,7 +125,8 @@ function czytnikPKO(naglowkiN) {
         const odbiorca = pola['NAZWA ODBIORCY'] || '';
         const nadawca = pola['NAZWA NADAWCY'] || '';
         const sklep = pola['LOKALIZACJA'] ? sklepZLokalizacji(pola['LOKALIZACJA']) : '';
-        const kontrahent = (wplyw ? (nadawca || odbiorca) : (odbiorca || nadawca)) || sklep;
+        // Jak w Alior: tylko druga strona operacji, bez zastępowania nazwą właściciela rachunku
+        const kontrahent = (wplyw ? nadawca : odbiorca) || sklep;
 
         let tytul = pola['TYTUL'] || bezKlucza.join(' ');
         if (samNumer(tytul)) tytul = ''; // np. numer karty / referencja płatności kartą
