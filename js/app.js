@@ -73,16 +73,20 @@ const TYTULY_ZAKLADEK = {
 };
 
 // Klik w zakładkę: zamyka otwarte szczegóły, czyści filtr i przewija na górę (10.1).
-// opcje.filtr pozwala wejść na zakładkę z ustawionym filtrem (np. z alertu na pulpicie).
+// opcje pozwalają wejść na zakładkę z ustawionym filtrem (np. z Pulpitu):
+//   filtr ('brak' | 'przypisane'), kategoria, zakres { od, do }, miesiac ('RRRR-MM' | null)
 function zmienZakladke(nazwa, opcje = {}) {
     // Ustawienia nie są zakładką paska – zapamiętujemy, skąd przyszliśmy („‹ Wróć”)
     if (nazwa === 'ustawienia' && stan.zakladka !== 'ustawienia') stan.poprzedniaZakladka = stan.zakladka;
     stan.zakladka = nazwa;
     stan.filtrTransakcji = opcje.filtr || 'wszystkie';
+    stan.filtrKategorii = opcje.kategoria || null;
+    stan.zakresTransakcji = opcje.zakres || null;
     if (nazwa === 'transakcje') {
         // „Do przypisania” z pulpitu obejmuje wszystkie miesiące (7.1);
         // zwykłe wejście pokazuje ten sam miesiąc, który jest wybrany na Pulpicie.
-        stan.miesiacTransakcji = opcje.filtr === 'brak' ? null : (stan.miesiacWybrany || null);
+        stan.miesiacTransakcji = 'miesiac' in opcje ? opcje.miesiac
+            : opcje.filtr === 'brak' ? null : (stan.miesiacWybrany || null);
     }
     if (nazwa === 'import') przygotujEkranImportu();
     stan.otwartyCel = null;           // klik w zakładkę zamyka otwarte szczegóły (10.1)

@@ -2,12 +2,14 @@
 // EKRAN: TRANSAKCJE (specyfikacja, punkt 7.1)
 //  - filtry: Wszystkie / Do przypisania / Przypisane (liczniki dla wybranego okresu)
 //  - wybór miesiąca (jak na Pulpicie) + „Wszystkie miesiące”
+//  - filtr kategorii i zakresu dat – wejście z Pulpitu („Wydatki według kategorii”)
 //  - przełącznik „Zapamiętaj kategorię dla podobnych transakcji” (4.4)
 //  - kolejność: data rosnąco w obrębie miesiąca (jak na wyciągu)
 // =====================================================================
 
 const KLUCZ_ZAPAMIETAJ = 'budzet.zapamietajPodobne';
 const WSZYSTKIE_MIESIACE = null;
+const BEZ_KATEGORII = 'Nieprzypisane'; // nazwa grupy wydatków bez kategorii (jak w podsumuj())
 
 // ---- Ustawienie „Zapamiętaj dla podobnych” (domyślnie włączone) ------
 
@@ -41,6 +43,69 @@ function pasujeDoFiltra(wiersz, filtr) {
     if (filtr === 'brak') return wiersz.doPrzypisania;
     if (filtr === 'przypisane') return !wiersz.doPrzypisania;
     return true;
+}
+
+// Wydatek należy do kategorii: wprost, przez część podziału albo (BEZ_KATEGORII) bez kategorii
+function pasujeDoKategorii(k, kategoria) {
+    if (k.typ !== 'wydatek') return false;
+    if (kategoria === BEZ_KATEGORII) return !k.kategoria && !k.podzial;
+    return k.kategoria === kategoria || (!!k.podzial && k.podzial.some(c => c.category === kategoria));
+}
+
+function pasujeDoZakresu(t, zakres) {
+    return (!zakres.od || t.booked_on >= zakres.od) && (!zakres.do || t.booked_on <= zakres.do);
+}
+
+// Wejście z Pulpitu: lista transakcji jednej kategorii w okresie wybranym na Pulpicie
+function pokazTransakcjeKategorii(kategoria) {
+    const zakres = stan.trybFiltraPulpit === 'zakres'
+        ? { od: stan.pulpitDataOd || '', do: stan.pulpitDataDo || '' }
+        : null;
+    zmienZakladke('transakcje', {
+        kategoria,
+        zakres,
+        miesiac: zakres ? WSZYSTKIE_MIESIACE : stan.miesiacWybrany
+    });
+}
+
+function wyczyscFiltrKategorii() {
+    stan.filtrKategorii = null;
+    stan.zakresTransakcji = null;
+    stan.podzial = null;
+    odswiezTransakcje();
+}
+
+// "2026-10-05" -> "05.10.2026"
+function dataPL(iso) {
+    return iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '';
+}
+
+function opisZakresu(zakres) {
+    if (zakres.od && zakres.do) return `${dataPL(zakres.od)} – ${dataPL(zakres.do)}`;
+    if (zakres.od) return `od ${dataPL(zakres.od)}`;
+    if (zakres.do) return `do ${dataPL(zakres.do)}`;
+    return 'cały okres';
+}
+
+// Pasek nad filtrami: aktywna kategoria (i zakres dat), powrót na Pulpit, wyczyszczenie filtra
+function rysujFiltrKategorii(kategoria, zakres) {
+    const pasek = document.getElementById('transakcje-filtr-kategorii');
+    if (!kategoria && !zakres) {
+        pasek.classList.add('hidden');
+        pasek.innerHTML = '';
+        return;
+    }
+    const nazwa = kategoria === BEZ_KATEGORII ? 'Bez kategorii' : kategoria;
+    pasek.classList.remove('hidden');
+    pasek.innerHTML = `
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+            <button type="button" onclick="zmienZakladke('pulpit')" class="text-sm font-semibold text-[var(--accent)]">‹ Pulpit</button>
+            <button type="button" onclick="wyczyscFiltrKategorii()" class="text-[11px] text-[var(--muted)] underline">Pokaż wszystkie transakcje</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap text-xs">
+            ${kategoria ? `<span class="chip is-active !inline-flex items-center gap-1.5"><span class="dot" style="background:${esc(kolorKategorii(kategoria))}"></span>${esc(nazwa)}</span>` : ''}
+            ${zakres ? `<span class="chip">${esc(opisZakresu(zakres))}</span>` : ''}
+        </div>`;
 }
 
 // ---- Wiersz transakcji (wygląd jak dotąd) ----------------------------
@@ -91,6 +156,11 @@ function prawaKolumna(t, k) {
 }
 
 function wierszTransakcji({ t, k }) {
+    // Przy filtrze kategorii część podziału z tej kategorii jest wyróżniona
+    const opisPodzialu = k.podzial ? k.podzial.map(c => {
+        const tekst = `${esc(c.category)} ${(Math.abs(c.amount_gr) / 100).toFixed(2)} zł`;
+        return c.category === stan.filtrKategorii ? `<strong class="text-[var(--fg)]">${tekst}</strong>` : tekst;
+    }).join(' · ') : '';
     return `
         <article class="card text-xs">
           <div class="flex justify-between items-start gap-3">
@@ -99,7 +169,7 @@ function wierszTransakcji({ t, k }) {
                 ${t.title ? `<p class="text-[11px] text-[var(--muted)] line-clamp-2 mt-0.5 leading-tight">${esc(t.title)}</p>` : ''}
                 ${t.account_number && (k.typ === 'wplata' || k.typ === 'wyplata') ? `<p class="text-[10px] text-[var(--accent)] font-mono mt-0.5 truncate">Konto: ${esc(t.account_number)}</p>` : ''}
                 <time class="inline-block text-[10px] text-[var(--muted)] mt-1" datetime="${esc(t.booked_on)}">${esc(t.booked_on)}</time>
-                ${k.podzial ? `<p class="text-[10px] text-[var(--muted)] mt-0.5">${k.podzial.map(c => `${esc(c.category)} ${(Math.abs(c.amount_gr) / 100).toFixed(2)} zł`).join(' · ')}</p>` : ''}
+                ${k.podzial ? `<p class="text-[10px] text-[var(--muted)] mt-0.5">${opisPodzialu}</p>` : ''}
             </div>
             <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
                 <div class="flex items-center gap-1">
@@ -120,22 +190,28 @@ function wierszTransakcji({ t, k }) {
 function odswiezTransakcje() {
     const lista = document.getElementById('lista-transakcji');
     const filtr = stan.filtrTransakcji || 'wszystkie';
+    const kategoria = stan.filtrKategorii;
+    const zakres = stan.zakresTransakcji;
 
-    // Klasyfikacja raz na transakcję, kolejność: data rosnąco (jak na wyciągu)
+    rysujFiltrKategorii(kategoria, zakres);
+
+    // Klasyfikacja raz na transakcję, kolejność: data rosnąco (jak na wyciągu).
+    // Filtr kategorii i zakresu dat zawęża wszystko poniżej (liczniki, miesiące, listę).
     const wszystkie = stan.transakcje
         .slice()
         .sort((a, b) => a.booked_on.localeCompare(b.booked_on) || String(a.id).localeCompare(String(b.id)))
         .map(t => {
             const k = klasyfikuj(t);
             return { t, k, doPrzypisania: czyKlasyfikacjaDoPrzypisania(k) };
-        });
+        })
+        .filter(w => (!kategoria || pasujeDoKategorii(w.k, kategoria)) && (!zakres || pasujeDoZakresu(w.t, zakres)));
 
     // Miesiące z transakcjami (najnowszy pierwszy); nieistniejący wybór -> wszystkie
     const miesiace = Array.from(new Set(wszystkie.map(w => w.t.booked_on.substring(0, 7)))).sort().reverse();
     if (stan.miesiacTransakcji && !miesiace.includes(stan.miesiacTransakcji)) {
         stan.miesiacTransakcji = WSZYSTKIE_MIESIACE;
     }
-    const miesiac = stan.miesiacTransakcji;
+    const miesiac = zakres ? WSZYSTKIE_MIESIACE : stan.miesiacTransakcji;
     const wOkresie = miesiac ? wszystkie.filter(w => w.t.booked_on.startsWith(miesiac)) : wszystkie;
 
     // Filtry z licznikami dla wybranego okresu
@@ -151,7 +227,10 @@ function odswiezTransakcje() {
         document.getElementById(`licznik-${f}`).innerText = liczniki[f];
     });
 
-    // Wybór miesiąca: liczba pozycji pasujących do filtra w każdym miesiącu
+    // Wybór miesiąca: liczba pozycji pasujących do filtra w każdym miesiącu.
+    // Przy zakresie dat z Pulpitu okres jest już ustalony – miesięcy nie pokazujemy.
+    const kontenerMiesiecy = document.getElementById('transakcje-miesiace');
+    kontenerMiesiecy.classList.toggle('hidden', !!zakres);
     const naMiesiac = {};
     wszystkie.forEach(w => {
         if (!pasujeDoFiltra(w, filtr)) return;
@@ -160,10 +239,11 @@ function odswiezTransakcje() {
     });
     const chipMiesiaca = (wartosc, etykieta, ile) => {
         const wybrany = (wartosc || null) === (miesiac || null);
-        return `<button type="button" onclick="wybierzMiesiacTransakcji(${wartosc ? `'${esc(wartosc)}'` : 'null'})" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(etykieta)}${filtr !== 'wszystkie' ? ` <span class="opacity-70">(${ile || 0})</span>` : ''}</button>`;
+        const pokazLicznik = filtr !== 'wszystkie' || kategoria;
+        return `<button type="button" onclick="wybierzMiesiacTransakcji(${wartosc ? `'${esc(wartosc)}'` : 'null'})" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(etykieta)}${pokazLicznik ? ` <span class="opacity-70">(${ile || 0})</span>` : ''}</button>`;
     };
     const sumaFiltra = Object.values(naMiesiac).reduce((a, b) => a + b, 0);
-    document.getElementById('transakcje-miesiace').innerHTML =
+    kontenerMiesiecy.innerHTML =
         chipMiesiaca(null, 'Wszystkie miesiące', sumaFiltra) +
         miesiace.map(m => chipMiesiaca(m, nazwaMiesiaca(m), naMiesiac[m])).join('');
 
@@ -176,9 +256,11 @@ function odswiezTransakcje() {
 
     if (dane.length === 0) {
         podsumowanie.innerText = '';
-        const wOkresieTekst = miesiac ? ` w ${nazwaMiesiacaMiejscownik(miesiac)}` : '';
+        const wOkresieTekst = zakres ? ` (${opisZakresu(zakres)})` : miesiac ? ` w ${nazwaMiesiacaMiejscownik(miesiac)}` : '';
+        const nazwaKat = kategoria === BEZ_KATEGORII ? 'bez kategorii' : `w kategorii ${kategoria}`;
         const komunikat = stan.transakcje.length === 0
             ? 'Brak transakcji. Zaimportuj wyciąg w zakładce Import.'
+            : kategoria ? `Brak transakcji ${nazwaKat}${wOkresieTekst}.`
             : filtr === 'brak' ? `Wszystkie transakcje${wOkresieTekst} mają kategorię.`
             : filtr === 'przypisane' ? `Brak przypisanych transakcji${wOkresieTekst}.`
             : `Brak transakcji${wOkresieTekst}.`;
@@ -187,7 +269,10 @@ function odswiezTransakcje() {
     }
 
     const s = podsumuj(dane.map(w => w.t));
-    podsumowanie.innerText = `${dane.length} ${odmianaTransakcji(dane.length)} · wpływy ${zl(s.przychody + s.wyplaty, 2)} · wydatki ${zl(s.wydatki, 2)}`;
+    // Przy filtrze kategorii liczymy tylko części z tej kategorii – suma = kwota z Pulpitu
+    podsumowanie.innerText = kategoria
+        ? `${dane.length} ${odmianaTransakcji(dane.length)} · razem w kategorii ${zl(s.kategorie[kategoria] || 0, 2)}`
+        : `${dane.length} ${odmianaTransakcji(dane.length)} · wpływy ${zl(s.przychody + s.wyplaty, 2)} · wydatki ${zl(s.wydatki, 2)}`;
 
     // „Wszystkie miesiące”: sekcje miesięcy od najnowszego, w środku data rosnąco
     const grupy = {};
@@ -202,9 +287,7 @@ function odswiezTransakcje() {
 }
 
 function odmianaTransakcji(n) {
-    if (n === 1) return 'transakcja';
-    const d = n % 10, s = n % 100;
-    return d >= 2 && d <= 4 && (s < 12 || s > 14) ? 'transakcje' : 'transakcji';
+    return odmiana(n, 'transakcja', 'transakcje', 'transakcji');
 }
 
 // ---- Zapis -----------------------------------------------------------

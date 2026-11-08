@@ -146,18 +146,26 @@ function rysujKategoriePulpitu(kategorie, trybMiesiac) {
         if (limit) {
             const wykorzystanie = kwota / limit;
             const ostrzezenie = wykorzystanie >= PROG_OSTRZEZENIA_LIMITU;
-            linijkaLimitu = `<p class="text-[10px] ${ostrzezenie ? 'text-[var(--c-spend)] font-bold' : 'text-[var(--muted)]'}">Limit ${zl(limit)} · wykorzystano ${Math.round(wykorzystanie * 100)}%</p>`;
+            // <span class="block">, bo wiersz jest przyciskiem (w <button> nie może być <p>)
+            linijkaLimitu = `<span class="block text-[10px] ${ostrzezenie ? 'text-[var(--c-spend)] font-bold' : 'text-[var(--muted)]'}">Limit ${zl(limit)} · wykorzystano ${Math.round(wykorzystanie * 100)}%</span>`;
         }
+        // Klik w wiersz: lista transakcji tej kategorii w wybranym okresie (zakładka Transakcje)
+        const nazwa = kat === 'Nieprzypisane' ? 'Bez kategorii' : kat;
         return `
-            <div class="space-y-1 border-b border-[var(--border)] pb-2">
-                <div class="flex justify-between items-center gap-2">
-                    <span class="flex items-center gap-2 min-w-0"><span class="dot" style="background:${esc(kolor)}"></span><span class="truncate">${esc(kat)}</span></span>
-                    <span class="kwota font-semibold whitespace-nowrap">${zl(kwota, 2)}</span>
-                </div>
-                <div class="h-1.5 w-full rounded-full bg-[var(--bg)] overflow-hidden" aria-hidden="true">
-                    <div class="h-full rounded-full" style="width:${dlugosc.toFixed(1)}%;background:${esc(kolor)}"></div>
-                </div>
+            <button type="button" data-kat="${esc(kat)}" onclick="pokazTransakcjeKategorii(this.dataset.kat)"
+                class="block w-full text-left space-y-1 border-b border-[var(--border)] pb-2 -mx-1 px-1 pt-1 rounded-lg hover:bg-[var(--bg)] transition"
+                aria-label="${esc(`${nazwa}: ${zl(kwota, 2)}. Pokaż transakcje`)}">
+                <span class="flex justify-between items-center gap-2">
+                    <span class="flex items-center gap-2 min-w-0"><span class="dot" style="background:${esc(kolor)}"></span><span class="truncate">${esc(nazwa)}</span></span>
+                    <span class="flex items-center gap-1.5 whitespace-nowrap">
+                        <span class="kwota font-semibold">${zl(kwota, 2)}</span>
+                        <span class="text-[var(--muted)]" aria-hidden="true">›</span>
+                    </span>
+                </span>
+                <span class="block h-1.5 w-full rounded-full bg-[var(--bg)] overflow-hidden" aria-hidden="true">
+                    <span class="block h-full rounded-full" style="width:${dlugosc.toFixed(1)}%;background:${esc(kolor)}"></span>
+                </span>
                 ${linijkaLimitu}
-            </div>`;
+            </button>`;
     }).join('');
 }
