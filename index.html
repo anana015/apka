@@ -423,102 +423,145 @@
                 </article>
             </section>
 
-            <!-- 6. USTAWIENIA (zębatka w nagłówku; specyfikacja 11.3, 9.1, 3 „categories”) -->
+            <!-- 6. USTAWIENIA (zębatka w nagłówku; specyfikacja 11.3, 9.1, 3 „categories”)
+                 Trzy poziomy, szczegóły dopiero po wejściu głębiej:
+                   menu → strona (Kategorie, Reguły, …) → szczegóły jednej kategorii.
+                 Widoczna jest jedna strona naraz (data-strona) – przełącza ją ustawienia.js.
+                 Klasa „contents”: karty strony układają się w siatce widoku jak zwykłe karty. -->
             <section id="tab-ustawienia" class="hidden view">
-                <button type="button" onclick="wrocZUstawien()" class="span-all justify-self-start text-sm font-semibold text-[var(--accent)]">‹ <span id="ust-wroc-nazwa">Pulpit</span></button>
+                <button type="button" id="ust-wroc" onclick="wsteczUstawienia()" class="span-all justify-self-start text-sm font-semibold text-[var(--accent)]">‹ <span id="ust-wroc-nazwa">Pulpit</span></button>
 
-                <article class="card space-y-3">
-                    <h2 class="font-semibold text-sm">Budżet</h2>
-                    <div class="flex items-center justify-between gap-3 text-xs">
-                        <label for="stat-cel-stopy">
-                            <span class="font-semibold block">Docelowa stopa oszczędności</span>
-                            <span class="text-[10px] text-[var(--muted)]">Kafelek i wykres w Statystykach (domyślnie 15%)</span>
+                <!-- POZIOM 1: MENU (wiersze z podsumowaniem rysuje rysujMenuUstawien) -->
+                <div class="ust-strona contents" data-strona="menu">
+                    <nav class="card !p-2" aria-labelledby="ust-menu-budzet">
+                        <h2 id="ust-menu-budzet" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1 pb-1">Budżet wspólny</h2>
+                        <ul id="ust-menu-budzet-lista" class="divide-y divide-[var(--border)]"></ul>
+                    </nav>
+                    <div class="space-y-3 min-[900px]:space-y-4">
+                        <nav class="card !p-2" aria-labelledby="ust-menu-urzadzenie">
+                            <h2 id="ust-menu-urzadzenie" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1 pb-1">Na tym urządzeniu</h2>
+                            <ul id="ust-menu-urzadzenie-lista" class="divide-y divide-[var(--border)]"></ul>
+                        </nav>
+                        <article class="card flex items-center justify-between gap-3">
+                            <div class="min-w-0">
+                                <h2 class="font-semibold text-sm">Konto</h2>
+                                <p id="ust-konto" class="text-xs text-[var(--muted)] truncate"></p>
+                            </div>
+                            <button type="button" onclick="wyloguj()" class="btn-secondary whitespace-nowrap">Wyloguj</button>
+                        </article>
+                    </div>
+                </div>
+
+                <!-- POZIOM 2: PREFERENCJE (zapisane w tej przeglądarce, wspólne dla obu budżetów) -->
+                <div class="ust-strona contents hidden" data-strona="preferencje">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <div>
+                            <h2 class="font-semibold text-sm">Preferencje</h2>
+                            <p class="text-[10px] text-[var(--muted)]">Zapisane w tej przeglądarce – dotyczą obu budżetów.</p>
+                        </div>
+                        <div class="flex items-center justify-between gap-3 text-xs border-t border-[var(--border)] pt-3">
+                            <label for="stat-cel-stopy">
+                                <span class="font-semibold block">Docelowa stopa oszczędności</span>
+                                <span class="text-[10px] text-[var(--muted)]">Kafelek i wykres w Statystykach (domyślnie 15%)</span>
+                            </label>
+                            <span class="flex items-center gap-1">
+                                <input type="number" id="stat-cel-stopy" min="0" max="100" step="1" inputmode="decimal" onchange="zmienDocelowaStope(this.value)" class="input !w-20 text-right kwota">
+                                <span>%</span>
+                            </span>
+                        </div>
+                        <label class="flex items-center justify-between gap-3 text-xs border-t border-[var(--border)] pt-3">
+                            <span>
+                                <span class="font-semibold block">Zapamiętaj kategorię dla podobnych transakcji</span>
+                                <span class="text-[10px] text-[var(--muted)]">To samo co przełącznik w zakładce Transakcje</span>
+                            </span>
+                            <input type="checkbox" id="ust-zapamietaj" role="switch" class="switch" onchange="zmienZapamietywanie(this.checked)">
                         </label>
-                        <span class="flex items-center gap-1">
-                            <input type="number" id="stat-cel-stopy" min="0" max="100" step="1" inputmode="decimal" onchange="zmienDocelowaStope(this.value)" class="input !w-20 text-right kwota">
-                            <span>%</span>
-                        </span>
-                    </div>
-                    <label class="flex items-center justify-between gap-3 text-xs border-t border-[var(--border)] pt-3">
-                        <span>
-                            <span class="font-semibold block">Zapamiętaj kategorię dla podobnych transakcji</span>
-                            <span class="text-[10px] text-[var(--muted)]">To samo co przełącznik w zakładce Transakcje</span>
-                        </span>
-                        <input type="checkbox" id="ust-zapamietaj" role="switch" class="switch" onchange="zmienZapamietywanie(this.checked)">
-                    </label>
-                </article>
+                    </article>
+                </div>
 
-                <article class="card space-y-3">
-                    <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
-                    <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
-                    <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
-                    <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
-                </article>
+                <!-- POZIOM 2: KATEGORIE otwartego budżetu – czysta lista; szczegóły po kliknięciu kategorii -->
+                <div class="ust-strona contents hidden" data-strona="kategorie">
+                    <article class="card space-y-3 span-all">
+                        <div class="flex justify-between items-center gap-2 flex-wrap">
+                            <h2 class="font-semibold text-sm">Kategorie <span id="kat-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                            <span class="flex items-center gap-2 flex-wrap">
+                                <span id="kat-info" class="text-[11px] text-[var(--muted)]"></span>
+                                <button type="button" id="btn-kat-kolejnosc" onclick="przelaczKolejnoscKategorii()" class="chip">Zmień kolejność</button>
+                                <button type="button" id="btn-kat-wybor" onclick="otworzWyborKategorii()" class="chip is-active" aria-controls="kat-wybor">Wybierz z listy…</button>
+                            </span>
+                        </div>
+                        <p id="kat-opis" class="text-[11px] text-[var(--muted)]"></p>
+                        <div id="kat-wybor" class="hidden space-y-3 p-3 rounded-xl border border-[var(--border)]"></div>
+                        <div id="kat-lista"></div>
+                        <form id="kat-form" onsubmit="dodajKategorie(event)" class="flex gap-2 pt-1">
+                            <label for="kat-nowa" class="sr-only">Nazwa nowej kategorii</label>
+                            <input type="text" id="kat-nowa" maxlength="40" placeholder="Nowa kategoria, np. Dzieci" class="input">
+                            <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj</button>
+                        </form>
+                    </article>
+                </div>
 
-                <!-- Budżet osobisty: numer konta wspólnego -> kategoria „Przelew na wspólne” -->
-                <article id="ust-konto-wspolne-karta" class="hidden card space-y-3">
-                    <h2 class="font-semibold text-sm">Przelewy na konto wspólne</h2>
-                    <p class="text-[10px] text-[var(--muted)]">Przelewy z Twojego konta na ten numer trafią same do kategorii „Przelew na wspólne” – także te już zaimportowane. Działa tylko w Twoim budżecie osobistym.</p>
-                    <form onsubmit="zapiszKontoWspolne(event)" class="flex gap-2">
-                        <label for="ust-konto-wspolne" class="sr-only">Numer konta wspólnego</label>
-                        <input type="text" id="ust-konto-wspolne" inputmode="numeric" autocomplete="off" placeholder="26 cyfr numeru konta wspólnego" class="input kwota">
-                        <button type="submit" class="btn-secondary whitespace-nowrap">Zapisz</button>
-                    </form>
-                    <p id="ust-konto-wspolne-info" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
-                </article>
+                <!-- POZIOM 3: SZCZEGÓŁY KATEGORII (nazwa, kolor, limit, stała, oszczędność, użycie, usuwanie – rysuje ustawienia.js) -->
+                <div class="ust-strona contents hidden" data-strona="kategoria">
+                    <article id="kat-szczegoly" class="card span-all max-w-2xl w-full space-y-4"></article>
+                </div>
 
-                <!-- Kategorie otwartego budżetu: wybór z listy, kolor, limit miesięczny, wydatek stały, kolejność, usuwanie (11.1) -->
-                <article class="card space-y-3 span-all">
-                    <div class="flex justify-between items-center gap-2 flex-wrap">
-                        <h2 class="font-semibold text-sm">Kategorie <span id="kat-budzet" class="font-normal text-[var(--muted)]"></span></h2>
-                        <span class="flex items-center gap-3">
-                            <span id="kat-info" class="text-[11px] text-[var(--muted)]"></span>
-                            <button type="button" id="btn-kat-wybor" onclick="otworzWyborKategorii()" class="chip is-active" aria-controls="kat-wybor">Wybierz z listy…</button>
-                        </span>
-                    </div>
-                    <div id="kat-wybor" class="hidden space-y-3 p-3 rounded-xl border border-[var(--border)]"></div>
-                    <p class="text-[10px] text-[var(--muted)]">Każdy budżet ma własne kategorie i reguły. Limit miesięczny pojawia się pod kategorią na Pulpicie (puste pole = bez limitu). „Stała” to wydatek co miesiąc podobny – Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”. „Oszczędność” – płatności w tej kategorii (np. Akcje/Obligacje) liczą się do odłożonych pieniędzy i stopy oszczędności, a nie do wydatków. Kategorii używanej w transakcjach lub regułach nie można usunąć.</p>
-                    <div id="kat-lista"></div>
-                    <form id="kat-form" onsubmit="dodajKategorie(event)" class="flex gap-2 pt-1">
-                        <label for="kat-nowa" class="sr-only">Nazwa nowej kategorii</label>
-                        <input type="text" id="kat-nowa" maxlength="40" placeholder="Nowa kategoria, np. Dzieci" class="input">
-                        <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj</button>
-                    </form>
-                </article>
+                <!-- POZIOM 2: REGUŁY otwartego budżetu: fraza / numer konta → kategoria -->
+                <div class="ust-strona contents hidden" data-strona="reguly">
+                    <article class="card space-y-3 span-all">
+                        <div class="flex justify-between items-center gap-2 flex-wrap">
+                            <h2 class="font-semibold text-sm">Reguły <span id="reg-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                            <span id="reg-info" class="text-[11px] text-[var(--muted)]"></span>
+                        </div>
+                        <details class="text-[11px] text-[var(--muted)]">
+                            <summary class="cursor-pointer font-semibold">Jak działają reguły?</summary>
+                            <p class="mt-1">Reguła nadaje kategorię wydatkom, których kontrahent lub tytuł zawiera wszystkie słowa frazy. Fraza z samych cyfr (np. numer konta) porównywana jest z rachunkiem drugiej strony. Ręcznie wybrana kategoria zawsze ma pierwszeństwo; z kilku pasujących reguł wygrywa numer konta, potem najnowsza.</p>
+                        </details>
+                        <label for="reg-filtr" class="sr-only">Szukaj reguły</label>
+                        <input type="search" id="reg-filtr" oninput="rysujRegulyUstawien()" placeholder="Szukaj frazy albo kategorii…" class="input">
+                        <div id="reg-lista" class="scroll-box"></div>
+                        <form onsubmit="dodajRegule(event)" class="flex flex-wrap gap-2 pt-1">
+                            <label for="reg-nowa-fraza" class="sr-only">Fraza nowej reguły</label>
+                            <input type="text" id="reg-nowa-fraza" maxlength="60" placeholder="Fraza, np. ORLEN albo numer konta" class="input flex-1 min-w-[10rem]">
+                            <label for="reg-nowa-kat" class="sr-only">Kategoria nowej reguły</label>
+                            <select id="reg-nowa-kat" class="input !w-auto max-w-[13rem]"></select>
+                            <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj regułę</button>
+                        </form>
+                    </article>
+                </div>
 
-                <!-- Reguły otwartego budżetu: fraza / numer konta → kategoria (rysuje ustawienia.js) -->
-                <article class="card space-y-3 span-all">
-                    <div class="flex justify-between items-center gap-2 flex-wrap">
-                        <h2 class="font-semibold text-sm">Reguły <span id="reg-budzet" class="font-normal text-[var(--muted)]"></span></h2>
-                        <span id="reg-info" class="text-[11px] text-[var(--muted)]"></span>
-                    </div>
-                    <p class="text-[10px] text-[var(--muted)]">Reguła nadaje kategorię wydatkom, których kontrahent lub tytuł zawiera wszystkie słowa frazy. Fraza z samych cyfr (np. numer konta) porównywana jest z rachunkiem drugiej strony. Ręcznie wybrana kategoria zawsze ma pierwszeństwo; z kilku pasujących reguł wygrywa numer konta, potem najnowsza.</p>
-                    <label for="reg-filtr" class="sr-only">Szukaj reguły</label>
-                    <input type="search" id="reg-filtr" oninput="rysujRegulyUstawien()" placeholder="Szukaj frazy albo kategorii…" class="input">
-                    <div id="reg-lista" class="scroll-box"></div>
-                    <form onsubmit="dodajRegule(event)" class="flex flex-wrap gap-2 pt-1">
-                        <label for="reg-nowa-fraza" class="sr-only">Fraza nowej reguły</label>
-                        <input type="text" id="reg-nowa-fraza" maxlength="60" placeholder="Fraza, np. ORLEN albo numer konta" class="input flex-1 min-w-[10rem]">
-                        <label for="reg-nowa-kat" class="sr-only">Kategoria nowej reguły</label>
-                        <select id="reg-nowa-kat" class="input !w-auto max-w-[13rem]"></select>
-                        <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj regułę</button>
-                    </form>
-                </article>
+                <!-- POZIOM 2: PRZELEWY NA KONTO WSPÓLNE (tylko budżet osobisty): numer konta → „Przelew na wspólne” -->
+                <div class="ust-strona contents hidden" data-strona="kontoWspolne">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Przelewy na konto wspólne</h2>
+                        <p class="text-[10px] text-[var(--muted)]">Przelewy z Twojego konta na ten numer trafią same do kategorii „Przelew na wspólne” – także te już zaimportowane. Działa tylko w Twoim budżecie osobistym.</p>
+                        <form onsubmit="zapiszKontoWspolne(event)" class="flex gap-2">
+                            <label for="ust-konto-wspolne" class="sr-only">Numer konta wspólnego</label>
+                            <input type="text" id="ust-konto-wspolne" inputmode="numeric" autocomplete="off" placeholder="26 cyfr numeru konta wspólnego" class="input kwota">
+                            <button type="submit" class="btn-secondary whitespace-nowrap">Zapisz</button>
+                        </form>
+                        <p id="ust-konto-wspolne-info" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                    </article>
+                </div>
 
-                <article class="card space-y-3">
-                    <h2 class="font-semibold text-sm">Eksport do Excela</h2>
-                    <div>
-                        <label for="ust-eksport-okres" class="field-label">Okres</label>
-                        <select id="ust-eksport-okres" class="input"></select>
-                    </div>
-                    <button type="button" onclick="eksportujCSV()" class="btn-secondary w-full">Pobierz plik CSV</button>
-                    <p class="text-[10px] text-[var(--muted)]">Kolumny A–F: Data, Kontrahent, Tytuł, Kwota, Typ, Kategoria / cel. Separator średnik – plik otwiera się wprost w polskim Excelu.</p>
-                </article>
-
-                <article class="card space-y-1">
-                    <h2 class="font-semibold text-sm">Konto</h2>
-                    <p id="ust-konto" class="text-xs text-[var(--muted)]"></p>
-                </article>
+                <!-- POZIOM 2: KOPIA I EKSPORT otwartego budżetu -->
+                <div class="ust-strona contents hidden" data-strona="dane">
+                    <article class="card space-y-3">
+                        <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
+                        <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
+                        <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
+                        <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                    </article>
+                    <article class="card space-y-3">
+                        <h2 class="font-semibold text-sm">Eksport do Excela</h2>
+                        <div>
+                            <label for="ust-eksport-okres" class="field-label">Okres</label>
+                            <select id="ust-eksport-okres" class="input"></select>
+                        </div>
+                        <button type="button" onclick="eksportujCSV()" class="btn-secondary w-full">Pobierz plik CSV</button>
+                        <p class="text-[10px] text-[var(--muted)]">Kolumny A–F: Data, Kontrahent, Tytuł, Kwota, Typ, Kategoria / cel. Separator średnik – plik otwiera się wprost w polskim Excelu.</p>
+                    </article>
+                </div>
             </section>
 
         </main>
