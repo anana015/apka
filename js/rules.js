@@ -80,11 +80,26 @@ function pasujeFraza(t, fraza) {
     return slowa.every(s => tekst.includes(s));
 }
 
-// dynamiczneReguly są posortowane od najnowszej, więc wygrywa najnowsza pasująca reguła
+// Reguła z numerem rachunku (same cyfry, co najmniej 10) – porównujemy z rachunkiem
+// drugiej strony, np. numer konta wspólnego -> „Przelew na wspólne” (Ustawienia)
+function czyRegulaRachunku(fraza) {
+    return /^\d{10,}$/.test(czystyNumer(fraza));
+}
+
+function pasujeRegula(t, fraza) {
+    if (czyRegulaRachunku(fraza)) return czystyNumer(t.account_number).includes(czystyNumer(fraza));
+    return pasujeFraza(t, fraza);
+}
+
+// Reguły rachunku są dokładniejsze, więc sprawdzamy je pierwsze; potem frazy.
+// dynamiczneReguly są posortowane od najnowszej, więc wygrywa najnowsza pasująca reguła.
 function dopasujRegule(t) {
-    for (const regula of dynamiczneReguly) {
-        if (pasujeFraza(t, regula.phrase || regula.keyword)) {
-            return regula.category || regula.category_name;
+    for (const rachunku of [true, false]) {
+        for (const regula of dynamiczneReguly) {
+            const fraza = regula.phrase || regula.keyword;
+            if (czyRegulaRachunku(fraza) === rachunku && pasujeRegula(t, fraza)) {
+                return regula.category || regula.category_name;
+            }
         }
     }
     return null;

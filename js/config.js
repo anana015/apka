@@ -15,8 +15,8 @@ const PREFIKS_CELU = 'SKARBONKA:';
 // Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli lub kolumny
 const PLIK_MIGRACJI = 'supabase/migracja_2026-11.sql';
 
-// Kategorie startowe. Przy pierwszym uruchomieniu trafiają do tabeli categories,
-// potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.
+// Kategorie startowe budżetu wspólnego. Przy pierwszym uruchomieniu trafiają do tabeli
+// categories, potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.
 const KATEGORIE_DOMYSLNE = [
     'Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda',
     'Zakupy spożywcze', 'Jedzenie na mieście', 'Kosmetyki i chemia domowa',
@@ -24,6 +24,16 @@ const KATEGORIE_DOMYSLNE = [
     'Naprawy auta', 'Przegląd techniczny', 'Wymiana opon',
     'Sport', 'Rozrywka (Kino/teatr)', 'Prezenty', 'Wakacje',
     'Poduszka finansowa', 'Akcje/Obligacje', 'Nieplanowane'
+];
+
+// Przelew z konta osobistego na konto wspólne (dokładka do wspólnego budżetu)
+const KATEGORIA_PRZELEW_WSPOLNE = 'Przelew na wspólne';
+
+// Krótsza lista startowa budżetu osobistego
+const KATEGORIE_OSOBISTE_DOMYSLNE = [
+    KATEGORIA_PRZELEW_WSPOLNE, 'Jedzenie na mieście', 'Zakupy spożywcze', 'Ubrania',
+    'Kosmetyki', 'Zdrowie', 'Sport', 'Rozrywka', 'Subskrypcje', 'Transport',
+    'Prezenty', 'Hobby', 'Nieplanowane'
 ];
 
 // Kolory kategorii wg specyfikacji (pkt 10.4)
@@ -43,11 +53,16 @@ const GRUPA_KATEGORII = {
     'Paliwo': 'Transport', 'Ubezpieczenie auta': 'Transport', 'Naprawy auta': 'Transport',
     'Przegląd techniczny': 'Transport', 'Wymiana opon': 'Transport',
     'Rozrywka (Kino/teatr)': 'Rozrywka', 'Wakacje': 'Rozrywka',
-    'Poduszka finansowa': 'Inne', 'Akcje/Obligacje': 'Inne', 'Nieplanowane': 'Inne'
+    'Poduszka finansowa': 'Inne', 'Akcje/Obligacje': 'Inne', 'Nieplanowane': 'Inne',
+    // budżet osobisty
+    [KATEGORIA_PRZELEW_WSPOLNE]: 'Mieszkanie', 'Ubrania': 'Zakupy', 'Kosmetyki': 'Zakupy',
+    'Zdrowie': 'Zdrowie', 'Rozrywka': 'Rozrywka', 'Hobby': 'Rozrywka',
+    'Subskrypcje': 'Rachunki', 'Transport': 'Transport'
 };
 
 // Kategorie stałe na start (pole is_fixed w tabeli categories)
-const KATEGORIE_STALE = ['Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda', 'Ubezpieczenie auta'];
+const KATEGORIE_STALE = ['Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda', 'Ubezpieczenie auta',
+    KATEGORIA_PRZELEW_WSPOLNE, 'Subskrypcje'];
 
 // Docelowa stopa oszczędności w % (pkt 9.1); użytkownik zmienia ją w Ustawieniach
 const DOCELOWA_STOPA_DOMYSLNA = 15;
@@ -62,13 +77,23 @@ const PODATEK_BELKI = 0.19;                  // podatek od zysków kapitałowych
 const MIESIECY_MIEDZY_KAPITALIZACJAMI = 1;   // 1 = co miesiąc, 3 = co kwartał, 12 = raz w roku
 const DNI_W_ROKU_ODSETKI = 365;
 
-// Kategorie startowe jako wiersze tabeli categories
-function kategorieDomyslne() {
-    return KATEGORIE_DOMYSLNE.map((name, i) => ({
+// Lista nazw startowych dla budżetu ('wspolny' | 'osobisty')
+function nazwyKategoriiDomyslnych(budzet = 'wspolny') {
+    return budzet === 'osobisty' ? KATEGORIE_OSOBISTE_DOMYSLNE : KATEGORIE_DOMYSLNE;
+}
+
+// Wiersz tabeli categories dla nazwy: kolor z grupy, „stała” wg listy, podana kolejność
+function wierszKategorii(name, sort_order) {
+    return {
         name,
         color: KOLORY_GRUP[GRUPA_KATEGORII[name]] || KOLORY_GRUP.Inne,
         monthly_limit_gr: null,
         is_fixed: KATEGORIE_STALE.includes(name),
-        sort_order: (i + 1) * 10
-    }));
+        sort_order
+    };
+}
+
+// Kategorie startowe jako wiersze tabeli categories
+function kategorieDomyslne(budzet = 'wspolny') {
+    return nazwyKategoriiDomyslnych(budzet).map((name, i) => wierszKategorii(name, (i + 1) * 10));
 }

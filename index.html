@@ -413,14 +413,29 @@
                     <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
                 </article>
 
-                <!-- Kategorie: kolor, limit miesięczny, wydatek stały, kolejność, usuwanie (11.1) -->
+                <!-- Budżet osobisty: numer konta wspólnego -> kategoria „Przelew na wspólne” -->
+                <article id="ust-konto-wspolne-karta" class="hidden card space-y-3">
+                    <h2 class="font-semibold text-sm">Przelewy na konto wspólne</h2>
+                    <p class="text-[10px] text-[var(--muted)]">Przelewy z Twojego konta na ten numer trafią same do kategorii „Przelew na wspólne” – także te już zaimportowane. Działa tylko w Twoim budżecie osobistym.</p>
+                    <form onsubmit="zapiszKontoWspolne(event)" class="flex gap-2">
+                        <label for="ust-konto-wspolne" class="sr-only">Numer konta wspólnego</label>
+                        <input type="text" id="ust-konto-wspolne" inputmode="numeric" autocomplete="off" placeholder="26 cyfr numeru konta wspólnego" class="input kwota">
+                        <button type="submit" class="btn-secondary whitespace-nowrap">Zapisz</button>
+                    </form>
+                    <p id="ust-konto-wspolne-info" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                </article>
+
+                <!-- Kategorie otwartego budżetu: wybór z listy, kolor, limit miesięczny, wydatek stały, kolejność, usuwanie (11.1) -->
                 <article class="card space-y-3 span-all">
-                    <div class="flex justify-between items-baseline gap-2">
-                        <h2 class="font-semibold text-sm">Kategorie</h2>
-                        <span id="kat-info" class="text-[11px] text-[var(--muted)]"></span>
+                    <div class="flex justify-between items-center gap-2 flex-wrap">
+                        <h2 class="font-semibold text-sm">Kategorie <span id="kat-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                        <span class="flex items-center gap-3">
+                            <span id="kat-info" class="text-[11px] text-[var(--muted)]"></span>
+                            <button type="button" id="btn-kat-wybor" onclick="otworzWyborKategorii()" class="chip is-active" aria-controls="kat-wybor">Wybierz z listy…</button>
+                        </span>
                     </div>
-                    <p class="text-[10px] text-[var(--muted)]">Limit miesięczny pojawia się pod kategorią na Pulpicie (puste pole = bez limitu). „Stała” to wydatek co miesiąc podobny – Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”. Kategorii używanej w transakcjach lub regułach nie można usunąć.</p>
-                    <div id="kat-lista"></div>
+                    <div id="kat-wybor" class="hidden space-y-3 p-3 rounded-xl border border-[var(--border)]"></div>
+                    <p class="text-[10px] text-[var(--muted)]">Każdy budżet ma własne kategorie i reguły. Limit miesięczny pojawia się pod kategorią na Pulpicie (puste pole = bez limitu). „Stała” to wydatek co miesiąc podobny – Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”. Kategorii używanej w transakcjach lub regułach nie można usunąć.</p>                    <div id="kat-lista"></div>
                     <form id="kat-form" onsubmit="dodajKategorie(event)" class="flex gap-2 pt-1">
                         <label for="kat-nowa" class="sr-only">Nazwa nowej kategorii</label>
                         <input type="text" id="kat-nowa" maxlength="40" placeholder="Nowa kategoria, np. Dzieci" class="input">

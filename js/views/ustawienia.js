@@ -2,7 +2,8 @@
 // EKRAN: USTAWIENIA (zębatka w nagłówku)
 // Specyfikacja: 11.3 (kopia zapasowa, eksport do Excela), 9.1 (docelowa stopa
 // oszczędności), 3 „categories” i 11.1 (kategorie: kolor, limit, stała, usuwanie).
-// „Wczytaj kopię” (nadpisuje dane w chmurze) – osobny, kolejny etap.
+// Wszystko na tym ekranie dotyczy otwartego budżetu (wspólnego albo osobistego):
+// kategorie, reguły, kopia i eksport. „Wczytaj kopię” – osobny, kolejny etap.
 // =====================================================================
 
 const WERSJA_KOPII = 2;
@@ -36,7 +37,7 @@ function odswiezUstawienia() {
     document.getElementById('ust-zapamietaj').checked = zapamietujPodobne();
 
     document.getElementById('ust-kopia-info').innerText =
-        `W chmurze: ${stan.transakcje.length} transakcji, ${dynamiczneReguly.length} reguł, ${stan.cele.length} celów, ${stan.kategorie.length} kategorii.`;
+        `${nazwaBudzetu()} w chmurze: ${stan.transakcje.length} transakcji, ${dynamiczneReguly.length} reguł, ${stan.cele.length} celów, ${stan.kategorie.length} kategorii.`;
 
     // Okres eksportu: wszystkie albo jeden miesiąc (najnowszy pierwszy)
     const select = document.getElementById('ust-eksport-okres');
@@ -46,7 +47,9 @@ function odswiezUstawienia() {
         miesiace.map(m => `<option value="${esc(m)}">${esc(nazwaMiesiaca(m))}</option>`).join('');
     if (miesiace.includes(poprzedni)) select.value = poprzedni;
 
+    rysujKontoWspolne();
     rysujKategorieUstawien();
+    rysujWyborKategorii();
 
     const konto = document.getElementById('ust-konto');
     supabaseClient.auth.getUser()
@@ -62,6 +65,8 @@ function rysujKategorieUstawien() {
     const lista = document.getElementById('kat-lista');
     const formularz = document.getElementById('kat-form');
     const info = document.getElementById('kat-info');
+    document.getElementById('kat-budzet').innerText = `· ${nazwaBudzetu().toLowerCase()}`;
+    document.getElementById('btn-kat-wybor').classList.toggle('hidden', !stan.kategorieZBazy || !!stan.wyborKategorii);
 
     if (!stan.kategorieZBazy) {
         info.innerText = '';
@@ -114,6 +119,11 @@ function kategoriaPoId(id) {
     return stan.kategorie.find(k => String(k.id) === String(id)) || null;
 }
 
+// Kolejność dla nowej kategorii: na końcu listy
+function nastepnaKolejnosc() {
+    return stan.kategorie.reduce((m, k) => Math.max(m, k.sort_order || 0), 0) + 10;
+}
+
 // Nazwa poprawna i niezajęta (bez wielkości liter). Zwraca komunikat błędu albo ''.
 function bladNazwyKategorii(nazwa, pomijaneId = null) {
     if (!nazwa) return 'Podaj nazwę kategorii.';
@@ -132,11 +142,9 @@ async function dodajKategorie(e) {
 
     const kolory = Object.values(KOLORY_GRUP);
     const nowa = {
-        name: nazwa,
-        color: kolory[stan.kategorie.length % kolory.length],
-        monthly_limit_gr: null,
-        is_fixed: false,
-        sort_order: stan.kategorie.reduce((m, k) => Math.max(m, k.sort_order || 0), 0) + 10
+        ...wierszKategorii(nazwa, nastepnaKolejnosc()),
+        // nazwa spoza list startowych nie ma grupy – kolor kolejny z palety, żeby się różniły
+        ...(GRUPA_KATEGORII[nazwa] ? {} : { color: kolory[stan.kategorie.length % kolory.length] })
     };
     const { data, error } = await supabaseClient.from('categories').insert([nowa]).select();
     if (error) return pokazKomunikat(komunikatBledu(error, 'Nie dodano kategorii'));
@@ -159,7 +167,7 @@ async function zmienPoleKategorii(id, pole, wartosc) {
 }
 
 async function zmienLimitKategorii(id, pole) {
-    const tekst = pole.value.replace(/[\s ]/g, '').replace(',', '.');
+    const tekst = pole.value.replace(/[\s ]/g, '').replace(',', '.');
     if (tekst !== '' && !/^\d+(\.\d{0,2})?$/.test(tekst)) {
         pokazKomunikat('Limit podaj w złotych, np. 900. Puste pole = bez limitu.');
         return odswiezUstawienia();
@@ -237,6 +245,11 @@ function powiazaniaKategorii(nazwa) {
     return { transakcje, reguly };
 }
 
+function czyKategoriaUzywana(nazwa) {
+    const { transakcje, reguly } = powiazaniaKategorii(nazwa);
+    return transakcje + reguly > 0;
+}
+
 function pytajOUsuniecieKategorii(id) {
     const k = kategoriaPoId(id);
     if (!k) return;
@@ -269,6 +282,199 @@ async function usunKategorie(id) {
     stan.kategorie = stan.kategorie.filter(x => x !== k);
     odswiezInterfejs();
     pokazKomunikat(`Usunięto kategorię ${k.name}`);
+}
+
+// =====================================================================
+// WYBÓR KATEGORII Z LISTY
+// Szybkie skrócenie lub uzupełnienie listy: propozycje obu budżetów + własne kategorie,
+// zaznaczone = zostają / zostaną dodane. Kategorii w użyciu nie da się odznaczyć.
+// =====================================================================
+
+// Propozycje: najpierw lista startowa otwartego budżetu, potem drugiego, potem własne
+function kandydaciKategorii() {
+    const drugi = stan.budzet === 'osobisty' ? 'wspolny' : 'osobisty';
+    return [...new Set([
+        ...nazwyKategoriiDomyslnych(stan.budzet),
+        ...nazwyKategoriiDomyslnych(drugi),
+        ...stan.kategorie.map(k => k.name)
+    ])];
+}
+
+function otworzWyborKategorii() {
+    stan.wyborKategorii = new Set(stan.kategorie.map(k => k.name));
+    rysujKategorieUstawien();
+    rysujWyborKategorii();
+}
+
+function zamknijWyborKategorii() {
+    stan.wyborKategorii = null;
+    rysujKategorieUstawien();
+    rysujWyborKategorii();
+}
+
+function przelaczWyborKategorii(nazwa, zaznaczona) {
+    if (!stan.wyborKategorii) return;
+    if (zaznaczona) stan.wyborKategorii.add(nazwa);
+    else stan.wyborKategorii.delete(nazwa);
+    odswiezPodsumowanieWyboru();
+}
+
+// „Tylko podstawowe”: lista startowa tego budżetu + kategorie w użyciu
+function wybierzZestawPodstawowy() {
+    stan.wyborKategorii = new Set([
+        ...nazwyKategoriiDomyslnych(stan.budzet),
+        ...stan.kategorie.map(k => k.name).filter(czyKategoriaUzywana)
+    ]);
+    rysujWyborKategorii();
+}
+
+function zmianyWyboruKategorii() {
+    const wybrane = stan.wyborKategorii || new Set();
+    const istniejace = new Set(stan.kategorie.map(k => k.name));
+    return {
+        doDodania: kandydaciKategorii().filter(n => wybrane.has(n) && !istniejace.has(n)),
+        doUsuniecia: stan.kategorie.filter(k => !wybrane.has(k.name) && !czyKategoriaUzywana(k.name))
+    };
+}
+
+function odswiezPodsumowanieWyboru() {
+    const { doDodania, doUsuniecia } = zmianyWyboruKategorii();
+    const czesci = [];
+    if (doDodania.length) czesci.push(`dodasz ${doDodania.length}`);
+    if (doUsuniecia.length) czesci.push(`usuniesz ${doUsuniecia.length}`);
+    const brakZmian = czesci.length === 0;
+    document.getElementById('kat-wybor-podsumowanie').innerText = brakZmian
+        ? 'Bez zmian.'
+        : `Po zapisaniu: ${czesci.join(', ')} · na liście zostanie ${stan.wyborKategorii.size}.`;
+    document.getElementById('btn-kat-wybor-zapisz').disabled = brakZmian;
+}
+
+function rysujWyborKategorii() {
+    const panel = document.getElementById('kat-wybor');
+    panel.classList.toggle('hidden', !stan.wyborKategorii);
+    if (!stan.wyborKategorii) {
+        panel.innerHTML = '';
+        return;
+    }
+    const pozycje = kandydaciKategorii().map(nazwa => {
+        const uzywana = czyKategoriaUzywana(nazwa);
+        const zaznaczona = uzywana || stan.wyborKategorii.has(nazwa);
+        return `
+            <label class="flex items-center gap-2 py-1 text-xs ${uzywana ? 'text-[var(--muted)]' : 'cursor-pointer'}">
+                <input type="checkbox" class="accent-[var(--accent)] w-4 h-4 shrink-0" data-kat="${esc(nazwa)}"
+                    ${zaznaczona ? 'checked' : ''} ${uzywana ? 'disabled' : ''}
+                    onchange="przelaczWyborKategorii(this.dataset.kat, this.checked)">
+                <span class="dot" style="background:${esc(kolorKategorii(nazwa))}" aria-hidden="true"></span>
+                <span class="truncate">${esc(nazwa)}${uzywana ? ' <span class="text-[10px]">(w użyciu)</span>' : ''}</span>
+            </label>`;
+    }).join('');
+
+    panel.innerHTML = `
+        <div class="flex justify-between items-baseline gap-2 flex-wrap">
+            <h3 class="text-xs font-semibold">Zaznacz kategorie, których chcesz używać w: ${esc(nazwaBudzetu().toLowerCase())}</h3>
+            <button type="button" onclick="wybierzZestawPodstawowy()" class="text-[11px] text-[var(--accent)] font-semibold underline">Tylko podstawowe</button>
+        </div>
+        <fieldset class="grid grid-cols-1 min-[480px]:grid-cols-2 min-[1100px]:grid-cols-3 gap-x-4">
+            <legend class="sr-only">Kategorie budżetu</legend>
+            ${pozycje}
+        </fieldset>
+        <p class="text-[10px] text-[var(--muted)]">Kategorii „w użyciu” (ręcznie wybranych w transakcjach albo w regułach) nie można odznaczyć. Odznaczone, nieużywane kategorie zostaną usunięte – zawsze możesz je tu dodać z powrotem.</p>
+        <p id="kat-wybor-podsumowanie" class="text-xs font-semibold" aria-live="polite"></p>
+        <div class="flex gap-2 flex-wrap">
+            <button type="button" id="btn-kat-wybor-zapisz" onclick="zapiszWyborKategorii()" class="btn-primary !w-auto px-6">Zapisz listę</button>
+            <button type="button" onclick="zamknijWyborKategorii()" class="btn-secondary">Anuluj</button>
+        </div>`;
+    odswiezPodsumowanieWyboru();
+}
+
+async function zapiszWyborKategorii() {
+    const { doDodania, doUsuniecia } = zmianyWyboruKategorii();
+    if (!doDodania.length && !doUsuniecia.length) return;
+    document.getElementById('btn-kat-wybor-zapisz').disabled = true;
+
+    const start = nastepnaKolejnosc();
+    const zapytania = [];
+    if (doDodania.length) {
+        zapytania.push(supabaseClient.from('categories').insert(doDodania.map((n, i) => wierszKategorii(n, start + i * 10))));
+    }
+    if (doUsuniecia.length) {
+        zapytania.push(supabaseClient.from('categories').delete().in('id', doUsuniecia.map(k => k.id)));
+    }
+    const wyniki = await Promise.all(zapytania);
+    const blad = wyniki.find(r => r.error);
+
+    stan.wyborKategorii = null;
+    await pobierzDane();
+    pokazKomunikat(blad
+        ? komunikatBledu(blad.error, 'Nie wszystkie zmiany kategorii się zapisały')
+        : `Lista kategorii zapisana: +${doDodania.length} / −${doUsuniecia.length}`);
+}
+
+// =====================================================================
+// BUDŻET OSOBISTY: PRZELEWY NA KONTO WSPÓLNE
+// Zapisywane jako reguła rachunku w regułach budżetu osobistego:
+// phrase = numer konta wspólnego, category = „Przelew na wspólne” (patrz pasujeRegula w rules.js).
+// =====================================================================
+
+function regulaKontaWspolnego() {
+    return dynamiczneReguly.find(r => czyRegulaRachunku(r.phrase || '') && r.category === KATEGORIA_PRZELEW_WSPOLNE) || null;
+}
+
+function przelewyNaKonto(numer) {
+    return stan.transakcje.filter(t => t.amount_gr < 0 && numer && czystyNumer(t.account_number).includes(numer));
+}
+
+function rysujKontoWspolne() {
+    const karta = document.getElementById('ust-konto-wspolne-karta');
+    const widoczna = stan.budzet === 'osobisty' && stan.kategorieZBazy;
+    karta.classList.toggle('hidden', !widoczna);
+    if (!widoczna) return;
+
+    const regula = regulaKontaWspolnego();
+    const pole = document.getElementById('ust-konto-wspolne');
+    if (document.activeElement !== pole) pole.value = regula ? regula.phrase : '';
+    const ile = regula ? przelewyNaKonto(regula.phrase).length : 0;
+    document.getElementById('ust-konto-wspolne-info').innerText = regula
+        ? `Zaimportowane przelewy na to konto: ${ile}. Pole puste + „Zapisz” wyłącza regułę.`
+        : 'Numer konta wspólnego znajdziesz w bankowości, w której prowadzicie wspólny rachunek.';
+}
+
+// Kategoria o podanej nazwie w otwartym budżecie – dodaje ją, gdy jej brak
+async function zapewnijKategorie(nazwa) {
+    if (kategoriaPoNazwie(nazwa)) return true;
+    const { data, error } = await supabaseClient.from('categories').insert([wierszKategorii(nazwa, nastepnaKolejnosc())]).select();
+    if (error) {
+        pokazKomunikat(komunikatBledu(error, `Nie dodano kategorii ${nazwa}`));
+        return false;
+    }
+    if (data && data[0]) stan.kategorie.push(data[0]);
+    return true;
+}
+
+async function zapiszKontoWspolne(e) {
+    e.preventDefault();
+    if (stan.budzet !== 'osobisty') return;
+    const numer = czystyNumer(document.getElementById('ust-konto-wspolne').value).replace(/^PL/, '');
+    const regula = regulaKontaWspolnego();
+
+    if (!numer) {
+        if (!regula) return;
+        const { error } = await supabaseClient.from('rules').delete().eq('id', regula.id);
+        if (error) return pokazKomunikat(komunikatBledu(error, 'Nie usunięto reguły'));
+        await pobierzDane();
+        return pokazKomunikat('Wyłączono automatyczne „Przelew na wspólne”');
+    }
+    if (!/^\d{26}$/.test(numer)) return pokazKomunikat('Podaj 26 cyfr numeru konta (bez „PL”).');
+    if (!(await zapewnijKategorie(KATEGORIA_PRZELEW_WSPOLNE))) return;
+
+    const { error } = regula
+        ? await supabaseClient.from('rules').update({ phrase: numer }).eq('id', regula.id)
+        : await supabaseClient.from('rules').insert([{ phrase: numer, category: KATEGORIA_PRZELEW_WSPOLNE }]);
+    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie zapisano reguły'));
+
+    await pobierzDane();
+    const ile = przelewyNaKonto(numer).length;
+    pokazKomunikat(`Zapisano: przelewy na konto wspólne → ${KATEGORIA_PRZELEW_WSPOLNE}` + (ile ? ` (${ile} już zaimportowanych)` : ''));
 }
 
 // ---- Pobranie pliku --------------------------------------------------
@@ -313,13 +519,15 @@ async function zapiszKopie() {
         const kopia = {
             format: 'budzet-domowy-kopia',
             version: WERSJA_KOPII,
+            budget: stan.budzet,
             created_at: new Date().toISOString(),
             counts: Object.fromEntries(Object.entries(tabele).map(([k, v]) => [k, v.length])),
             settings: { docelowaStopa: docelowaStopa(), zapamietajPodobne: zapamietujPodobne() },
             tables: tabele
         };
 
-        pobierzPlik(`budzet-kopia-${dzisIso()}.json`, JSON.stringify(kopia, null, 2), 'application/json');
+        // Nazwa pliku mówi, z którego budżetu jest kopia
+        pobierzPlik(`budzet-${stan.budzet}-kopia-${dzisIso()}.json`, JSON.stringify(kopia, null, 2), 'application/json');
         pokazKomunikat('Kopia zapasowa zapisana');
     } catch (err) {
         pokazKomunikat('Nie udało się zapisać kopii: ' + err.message);
@@ -384,7 +592,7 @@ function eksportujCSV() {
     }
 
     // BOM – Excel rozpozna UTF-8 i pokaże polskie znaki
-    const nazwa = `budzet-transakcje-${okres || 'wszystkie'}.csv`;
+    const nazwa = `budzet-${stan.budzet}-transakcje-${okres || 'wszystkie'}.csv`;
     pobierzPlik(nazwa, '﻿' + wiersze.join('\r\n'), 'text/csv;charset=utf-8');
     pokazKomunikat(`Wyeksportowano ${lista.length} transakcji`);
 }

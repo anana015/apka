@@ -100,17 +100,17 @@ function komunikatBledu(error, poczatek = 'Błąd zapisu') {
 // Zwraca { kategorie, zBazy } – stan ustawia pobierzDane (po sprawdzeniu, że budżet się nie zmienił).
 async function pobierzKategorie() {
     let res = await pobierzWszystkie('categories', 'sort_order');
-    if (res.error) return { kategorie: kategorieDomyslne(), zBazy: false };
+    if (res.error) return { kategorie: kategorieDomyslne(stan.budzet), zBazy: false };
     if (res.data.length === 0) {
         // Po migracji nazwa jest unikalna w obrębie budżetu – zwykły insert; gdy drugie urządzenie
         // zdążyło zapisać kategorie pierwsze, insert się nie uda, a ponowny odczyt je pobierze.
         await (stan.schematBudzetow
-            ? supabaseClient.from('categories').insert(kategorieDomyslne())
-            : supabaseClient.from('categories').upsert(kategorieDomyslne(), { onConflict: 'name', ignoreDuplicates: true }));
+            ? supabaseClient.from('categories').insert(kategorieDomyslne(stan.budzet))
+            : supabaseClient.from('categories').upsert(kategorieDomyslne(stan.budzet), { onConflict: 'name', ignoreDuplicates: true }));
         res = await pobierzWszystkie('categories', 'sort_order');
     }
     return {
-        kategorie: res.data && res.data.length ? res.data : kategorieDomyslne(),
+        kategorie: res.data && res.data.length ? res.data : kategorieDomyslne(stan.budzet),
         zBazy: !res.error
     };
 }

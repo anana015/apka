@@ -34,6 +34,7 @@ let stan = {
     kategorie: kategorieDomyslne(),
     kategorieZBazy: false,        // false = brak tabeli categories, używamy listy z config.js
     kategoriaDoUsuniecia: null,   // id kategorii z otwartym potwierdzeniem usunięcia
+    wyborKategorii: null,         // Set nazw zaznaczonych w „Wybierz kategorie z listy” albo null (zamknięte)
     importy: null                 // historia importów (null = brak tabeli imports)
 };
 
@@ -50,9 +51,10 @@ function wyczyscDaneBudzetu() {
     Object.assign(stan, {
         transakcje: [],
         cele: [],
-        kategorie: kategorieDomyslne(),
+        kategorie: kategorieDomyslne(stan.budzet),
         kategorieZBazy: false,
         importy: null,
+        wyborKategorii: null,
         filtrTransakcji: 'wszystkie',
         miesiacTransakcji: null,
         filtrKategorii: null,
