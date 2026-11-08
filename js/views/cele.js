@@ -48,6 +48,15 @@ function miesiacRokDopelniacz(klucz) {
     return klucz ? `${MIESIACE_DOPELNIACZ[Number(klucz.slice(5, 7)) - 1]} ${klucz.slice(0, 4)}` : '—';
 }
 
+// "0,5% rocznie od nadwyżki ponad 1 000 zł" / "0,5% rocznie od całego salda" / "bez oprocentowania"
+function opisOprocentowania(cel) {
+    const { stopa, prog } = parametryOdsetek(cel);
+    if (!(stopa > 0)) return 'bez oprocentowania';
+    const kapitalizacja = { 1: 'co miesiąc', 3: 'co kwartał', 12: 'raz w roku' }[MIESIECY_MIEDZY_KAPITALIZACJAMI] || '';
+    return `${String(+stopa.toFixed(2)).replace('.', ',')}% rocznie ${prog > 0 ? `od nadwyżki ponad ${zl(prog)}` : 'od całego salda'}` +
+        (kapitalizacja ? `, kapitalizacja ${kapitalizacja}` : '');
+}
+
 // Analiza wszystkich celów naraz (klasyfikacja transakcji tylko raz)
 function analizyCelow() {
     const ops = operacjeCelow();
@@ -252,7 +261,12 @@ function rysujSzczegolyCelu(c) {
     const { wynik, ops } = analizyCelow();
     const a = wynik[c.id];
     const kolor = kolorCelu(c);
-    const operacje = ops[c.id].slice().sort((x, y) => y.t.booked_on.localeCompare(x.t.booked_on));
+    // Ostatnie operacje: przelewy + szacowane dopisania odsetek, od najnowszej
+    const operacje = [
+        ...ops[c.id].map(o => ({ data: o.t.booked_on, typ: o.typ, kwota: o.kwota })),
+        ...a.odsetki.kapitalizacje.map(k => ({ data: k.data, typ: 'odsetki', kwota: k.netto, brutto: k.brutto, podatek: k.podatek }))
+    ].sort((x, y) => y.data.localeCompare(x.data));
+    const RODZAJE = { wplata: 'wpłata', wyplata: 'wypłata', odsetki: 'odsetki ≈' };
     const zaWolno = a.status === 'za-wolno';
 
     const termin = a.terminKlucz
@@ -274,6 +288,9 @@ function rysujSzczegolyCelu(c) {
                     <p class="tile-value kwota" style="color:${esc(kolor)}">${zl(a.saldo)}</p>
                     <p class="text-xs text-[var(--muted)]">z ${zl(c.target_gr)} · brakuje ${zl(a.brakuje)}</p>
                     ${c.note ? `<p class="text-xs">${esc(c.note)}</p>` : ''}
+                    <p class="text-[11px] text-[var(--muted)]">${a.odsetki.netto > 0
+                        ? `w tym odsetki ≈ ${zl(a.odsetki.netto, 2)} (po ${Math.round(PODATEK_BELKI * 100)}% podatku Belki: −${zl(a.odsetki.podatek, 2)})`
+                        : 'odsetki: jeszcze brak'} · ${esc(opisOprocentowania(c))}</p>
                     <p class="text-[10px] text-[var(--muted)] truncate">Subkonto: <span class="font-mono">${esc(c.keyword || 'brak')}</span></p>
                     ${c.keywords_out ? `<p class="text-[10px] text-[var(--muted)] truncate">Słowa wypłat: ${esc(c.keywords_out)}</p>` : ''}
                 </div>
@@ -310,14 +327,16 @@ function rysujSzczegolyCelu(c) {
                             </thead>
                             <tbody>
                                 ${operacje.map(o => `
-                                    <tr class="border-t border-[var(--border)]">
-                                        <td class="py-1.5 kwota whitespace-nowrap">${esc(o.t.booked_on)}</td>
-                                        <td class="py-1.5">${o.typ === 'wplata' ? 'wpłata' : 'wypłata'}</td>
-                                        <td class="py-1.5 text-right kwota whitespace-nowrap ${o.typ === 'wplata' ? '' : 'text-[var(--c-spend)]'}">${o.typ === 'wplata' ? '' : '−'}${zl(o.kwota, 2)}</td>
+                                    <tr class="border-t border-[var(--border)] ${o.typ === 'odsetki' ? 'text-[var(--muted)]' : ''}"
+                                        ${o.typ === 'odsetki' ? `title="${esc(`Brutto ${zl(o.brutto, 2)} − podatek ${zl(o.podatek, 2)}`)}"` : ''}>
+                                        <td class="py-1.5 kwota whitespace-nowrap">${esc(o.data)}</td>
+                                        <td class="py-1.5">${RODZAJE[o.typ]}</td>
+                                        <td class="py-1.5 text-right kwota whitespace-nowrap ${o.typ === 'wyplata' ? 'text-[var(--c-spend)]' : ''}">${o.typ === 'wyplata' ? '−' : '+'}${zl(o.kwota, 2)}</td>
                                     </tr>`).join('')}
                             </tbody>
                         </table>
                     </div>`}
+                    <p class="text-[10px] text-[var(--muted)]">Odsetki są szacunkiem: bank dopisuje je na subkoncie, więc nie ma ich w wyciągu z konta głównego.</p>
                 </article>
             </div>
 
@@ -361,50 +380,83 @@ function groszeZPolaFormularza(tekst) {
     return Math.round(parseFloat(s) * 100);
 }
 
+// "0,5" -> 0.5; puste -> wartość domyślna; błędne -> NaN
+function liczbaZPola(tekst, domyslna) {
+    const s = String(tekst ?? '').replace(/[\s %]/g, '').replace(',', '.');
+    if (s === '') return domyslna;
+    return /^\d+(\.\d+)?$/.test(s) ? parseFloat(s) : NaN;
+}
+
+// Oprocentowanie z formularza: { interest_rate (%), interest_threshold_gr }
+function oprocentowanieZFormularza() {
+    return {
+        interest_rate: liczbaZPola(document.getElementById('cel-oprocentowanie').value, ODSETKI_STOPA_DOMYSLNA),
+        interest_threshold_gr: groszeZPolaFormularza(document.getElementById('cel-prog').value)
+    };
+}
+
 // Wartości formularza jako tymczasowy cel (do podpowiedzi o zaimportowanych przelewach)
 function celZFormularza() {
     const id = document.getElementById('cel-id').value || NOWY_CEL_ID;
+    const oprocentowanie = oprocentowanieZFormularza();
     return {
         id,
         name: document.getElementById('cel-nazwa').value.trim(),
         keyword: czystyNumer(document.getElementById('cel-keyword').value),
         keywords_out: document.getElementById('cel-keywords-out').value,
-        archived: false
+        archived: false,
+        interest_rate: Number.isFinite(oprocentowanie.interest_rate) ? oprocentowanie.interest_rate : 0,
+        interest_threshold_gr: Number.isFinite(oprocentowanie.interest_threshold_gr) ? oprocentowanie.interest_threshold_gr : 0
     };
 }
 
-// Wpłaty − wypłaty z zaimportowanych transakcji, które trafiłyby do tego celu.
-// Liczymy z prawdziwą klasyfikacją, podstawiając cel z formularza w miejsce zapisanego.
-function nettoZaimportowanychDlaCelu(tymczasowy) {
-    if (!tymczasowy.keyword && !tymczasowy.keywords_out) return 0;
+// Operacje z zaimportowanych transakcji, które trafiłyby do celu z formularza
+// (format jak w operacjeCelow()). Liczymy z prawdziwą klasyfikacją,
+// podstawiając cel z formularza w miejsce zapisanego.
+function operacjeTymczasowegoCelu(tymczasowy) {
+    if (!tymczasowy.keyword && !tymczasowy.keywords_out) return [];
     const zapisane = stan.cele;
     stan.cele = [...zapisane.filter(c => String(c.id) !== String(tymczasowy.id)), tymczasowy];
     try {
-        let netto = 0;
+        const ops = [];
         for (const t of stan.transakcje) {
             const k = klasyfikuj(t);
-            if (k.cel !== tymczasowy) continue;
-            if (k.typ === 'wplata') netto += Math.abs(t.amount_gr);
-            if (k.typ === 'wyplata') netto -= Math.abs(t.amount_gr);
+            if (k.cel !== tymczasowy || (k.typ !== 'wplata' && k.typ !== 'wyplata')) continue;
+            ops.push({ t, typ: k.typ, kwota: Math.abs(t.amount_gr), klucz: t.booked_on.substring(0, 7) });
         }
-        return netto;
+        return ops;
     } finally {
         stan.cele = zapisane;
     }
 }
 
-// Saldo początkowe do zapisu: wpisane saldo, a przy „dzisiejszym saldzie” – minus zaimportowane netto
+// Saldo początkowe do zapisu. Przy „dzisiejszym saldzie” odejmujemy zaimportowane przelewy
+// i szacowane odsetki. Odsetki zależą od salda początkowego, więc liczymy kilka przybliżeń
+// (różnice maleją ~100× w każdym kroku, 5 kroków wystarcza z zapasem).
 function wyliczSaldoPoczatkowe() {
     const wpisane = groszeZPolaFormularza(document.getElementById('cel-saldo').value);
     const dzisiejsze = document.getElementById('cel-saldo-dzis').checked;
-    const netto = nettoZaimportowanychDlaCelu(celZFormularza());
-    return { wpisane, dzisiejsze, netto, poczatkowe: dzisiejsze ? wpisane - netto : wpisane };
+    const tymczasowy = celZFormularza();
+    const ops = operacjeTymczasowegoCelu(tymczasowy);
+    const netto = ops.reduce((s, o) => s + (o.typ === 'wplata' ? o.kwota : -o.kwota), 0);
+    const odsetkiDla = poczatkowe => odsetkiCelu({ ...tymczasowy, opening_balance_gr: poczatkowe }, ops).netto;
+
+    if (!Number.isFinite(wpisane)) return { wpisane, dzisiejsze, netto, odsetki: 0, poczatkowe: NaN };
+    let poczatkowe = dzisiejsze ? wpisane - netto : wpisane;
+    let odsetki = odsetkiDla(poczatkowe);
+    if (dzisiejsze) {
+        for (let i = 0; i < 5; i++) {
+            poczatkowe = wpisane - netto - odsetki;
+            odsetki = odsetkiDla(poczatkowe);
+        }
+    }
+    return { wpisane, dzisiejsze, netto, odsetki, poczatkowe };
 }
 
-// Podpowiedź pod polem salda (aktualizowana przy każdej zmianie numeru, słów lub salda)
+// Podpowiedź pod polem salda (aktualizowana przy każdej zmianie numeru, słów, salda i oprocentowania)
 function odswiezPodpowiedzSalda() {
     const p = document.getElementById('cel-saldo-podpowiedz');
-    const { wpisane, dzisiejsze, netto, poczatkowe } = wyliczSaldoPoczatkowe();
+    const { wpisane, dzisiejsze, netto, odsetki, poczatkowe } = wyliczSaldoPoczatkowe();
     if (!Number.isFinite(wpisane)) {
         p.innerText = 'Podaj kwotę, np. 1200 albo 1200,50.';
         return;
@@ -412,10 +464,11 @@ function odswiezPodpowiedzSalda() {
     const zImportow = netto === 0
         ? 'Wśród zaimportowanych transakcji nie ma jeszcze przelewów tego celu.'
         : `Zaimportowane przelewy tego celu: ${netto > 0 ? '+' : '−'}${zl(Math.abs(netto), 2)} netto.`;
+    const zOdsetek = odsetki > 0 ? ` Szacowane odsetki po podatku: +${zl(odsetki, 2)}.` : '';
     const wynik = dzisiejsze
-        ? ` Zapiszemy saldo sprzed importów: ${zl(poczatkowe, 2)}, a w aplikacji cel pokaże ${zl(wpisane, 2)}.`
-        : ` W aplikacji cel pokaże ${zl(poczatkowe + netto, 2)}.`;
-    p.innerText = zImportow + wynik;
+        ? ` Zapiszemy saldo sprzed importów: ${zl(poczatkowe, 2)}, a w aplikacji cel pokaże ${zl(poczatkowe + netto + odsetki, 2)}.`
+        : ` W aplikacji cel pokaże ${zl(poczatkowe + netto + odsetki, 2)}.`;
+    p.innerText = zImportow + zOdsetek + wynik;
 }
 
 function pokazBladCelu(tresc) {
@@ -441,6 +494,9 @@ function otworzFormularzCelu(id = null) {
     document.getElementById('cel-saldo').value = cel ? String((cel.opening_balance_gr || 0) / 100).replace('.', ',') : '0';
     document.getElementById('cel-saldo-poczatkowe').checked = true;
     document.getElementById('cel-notatka').value = cel ? (cel.note || '') : '';
+    const { stopa, prog } = parametryOdsetek(cel || {});
+    document.getElementById('cel-oprocentowanie').value = String(stopa).replace('.', ',');
+    document.getElementById('cel-prog').value = String(prog / 100).replace('.', ',');
     pokazBladCelu('');
     odswiezPodpowiedzSalda();
 
@@ -462,6 +518,9 @@ function sprawdzFormularzCelu() {
     const keyword = czystyNumer(document.getElementById('cel-keyword').value);
     const keywords_out = document.getElementById('cel-keywords-out').value.trim();
     const note = document.getElementById('cel-notatka').value.trim();
+    const { interest_rate, interest_threshold_gr } = oprocentowanieZFormularza();
+    if (!Number.isFinite(interest_rate) || interest_rate > 20) return { blad: 'Oprocentowanie podaj w procentach, od 0 do 20 (np. 0,5).' };
+    if (!Number.isFinite(interest_threshold_gr) || interest_threshold_gr < 0) return { blad: 'Próg oprocentowania podaj w złotych (0 = odsetki od całego salda).' };
     const saldo = wyliczSaldoPoczatkowe();
 
     if (!name) return { blad: 'Podaj nazwę celu.' };
@@ -480,7 +539,7 @@ function sprawdzFormularzCelu() {
 
     return {
         dane: {
-            id, name, target_gr, keyword, keywords_out, note,
+            id, name, target_gr, keyword, keywords_out, note, interest_rate, interest_threshold_gr,
             deadline: `${termin}-01`, // pierwszy dzień miesiąca terminu (3 „goals”)
             opening_balance_gr: saldo.poczatkowe
         }

@@ -45,16 +45,133 @@ function podsumuj(lista) {
 }
 
 // Saldo każdego celu: saldo początkowe + wpłaty − wypłaty (wszystkie transakcje)
+// + szacowane odsetki po podatku
 function saldaCelow() {
+    const ops = operacjeCelow();
     const salda = {};
-    stan.cele.forEach(c => { salda[c.id] = c.opening_balance_gr || 0; });
-    stan.transakcje.forEach(t => {
-        const k = klasyfikuj(t);
-        if (!k.cel || !(k.cel.id in salda)) return;
-        if (k.typ === 'wplata') salda[k.cel.id] += Math.abs(t.amount_gr);
-        if (k.typ === 'wyplata') salda[k.cel.id] -= Math.abs(t.amount_gr);
+    stan.cele.forEach(c => {
+        const przeplywy = ops[c.id].reduce((s, o) => s + (o.typ === 'wplata' ? o.kwota : -o.kwota), 0);
+        salda[c.id] = (c.opening_balance_gr || 0) + przeplywy + odsetkiCelu(c, ops[c.id]).netto;
     });
     return salda;
+}
+
+// Odsetki netto wszystkich celów w podziale na miesiące kapitalizacji: { 'RRRR-MM': grosze }
+function odsetkiCelowMiesiecznie() {
+    const ops = operacjeCelow();
+    const wynik = {};
+    stan.cele.forEach(c => {
+        odsetkiCelu(c, ops[c.id]).kapitalizacje.forEach(k => {
+            const klucz = k.data.slice(0, 7);
+            wynik[klucz] = (wynik[klucz] || 0) + k.netto;
+        });
+    });
+    return wynik;
+}
+
+// =====================================================================
+// ODSETKI NA SUBKONTACH (szacunek)
+// Odsetki naliczane dziennie od salda na koniec dnia ponad próg (np. 1000 zł),
+// dopisywane w ostatnim dniu miesiąca kapitalizacji po potrąceniu podatku Belki.
+// Liczymy tylko do końca ostatniego pełnego miesiąca – bieżące odsetki bank dopisze później.
+// =====================================================================
+
+const DZIEN_MS = 86400000;
+
+function dataUTC(iso) {
+    const [r, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+    return Date.UTC(r, m - 1, d);
+}
+
+function isoZDaty(ms) {
+    return new Date(ms).toISOString().slice(0, 10);
+}
+
+// Ostatni dzień poprzedniego miesiąca: '2026-10-31' dla 8 listopada 2026
+function koniecOstatniegoPelnegoMiesiaca(dzis = new Date()) {
+    return isoZDaty(Date.UTC(dzis.getFullYear(), dzis.getMonth(), 1) - DZIEN_MS);
+}
+
+// Najwcześniejsza data transakcji = początek historii, od którego liczymy saldo początkowe
+function poczatekHistorii() {
+    let min = '';
+    for (const t of stan.transakcje) if (!min || t.booked_on < min) min = t.booked_on;
+    return min;
+}
+
+// Oprocentowanie celu: własne ustawienia albo domyślne z config.js
+function parametryOdsetek(cel) {
+    const stopa = cel.interest_rate == null || cel.interest_rate === '' ? ODSETKI_STOPA_DOMYSLNA : Number(cel.interest_rate);
+    const prog = cel.interest_threshold_gr == null ? ODSETKI_PROG_DOMYSLNY_GR : Number(cel.interest_threshold_gr);
+    return {
+        stopa: Number.isFinite(stopa) && stopa > 0 ? stopa : 0,
+        prog: Number.isFinite(prog) && prog > 0 ? prog : 0
+    };
+}
+
+/**
+ * Czysta funkcja: odsetki subkonta w okresie [od, doDnia].
+ * operacje: [{ data: 'RRRR-MM-DD', kwota: grosze ze znakiem (+ wpłata, − wypłata) }]
+ * Zwraca { brutto, podatek, netto, kapitalizacje: [{ data, brutto, podatek, netto }] }.
+ */
+function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa, prog = 0 }) {
+    const wynik = { brutto: 0, podatek: 0, netto: 0, kapitalizacje: [] };
+    if (!(stopa > 0) || !od || !doDnia || od > doDnia) return wynik;
+
+    const zmiany = {};
+    let saldo = saldoPoczatkowe;
+    for (const o of operacje) {
+        if (o.data < od) saldo += o.kwota;
+        else zmiany[o.data] = (zmiany[o.data] || 0) + o.kwota;
+    }
+
+    const dzienna = stopa / 100 / DNI_W_ROKU_ODSETKI;
+    const koniec = dataUTC(doDnia);
+    let narosle = 0; // odsetki brutto od ostatniej kapitalizacji (ułamki groszy)
+
+    for (let t = dataUTC(od); t <= koniec; t += DZIEN_MS) {
+        const iso = isoZDaty(t);
+        if (zmiany[iso]) saldo += zmiany[iso];
+        narosle += Math.max(0, saldo - prog) * dzienna;
+
+        const jutro = new Date(t + DZIEN_MS);
+        const ostatniDzienMiesiaca = jutro.getUTCDate() === 1;
+        const miesiacKapitalizacji = (new Date(t).getUTCMonth() + 1) % MIESIECY_MIEDZY_KAPITALIZACJAMI === 0;
+        if (ostatniDzienMiesiaca && miesiacKapitalizacji) {
+            const brutto = Math.round(narosle);
+            narosle = 0;
+            if (brutto > 0) {
+                const podatek = Math.round(brutto * PODATEK_BELKI);
+                const netto = brutto - podatek;
+                saldo += netto; // kapitalizacja: odsetki pracują dalej
+                wynik.brutto += brutto;
+                wynik.podatek += podatek;
+                wynik.netto += netto;
+                wynik.kapitalizacje.push({ data: iso, brutto, podatek, netto });
+            }
+        }
+    }
+    return wynik;
+}
+
+// Odsetki jednego celu z jego operacji (z operacjeCelow()).
+// Zakończony cel nie łapie nowych przelewów, więc odsetki liczymy tylko do jego ostatniej operacji.
+function odsetkiCelu(cel, operacje = [], dzis = new Date()) {
+    const { stopa, prog } = parametryOdsetek(cel);
+    let doDnia = koniecOstatniegoPelnegoMiesiaca(dzis);
+    if (cel.archived) {
+        const ostatnia = operacje.reduce((m, o) => (o.t.booked_on > m ? o.t.booked_on : m), '');
+        if (!ostatnia) return odsetkiSubkonta({});
+        if (ostatnia < doDnia) doDnia = ostatnia;
+    }
+    return odsetkiSubkonta({
+        saldoPoczatkowe: cel.opening_balance_gr || 0,
+        operacje: operacje.map(o => ({ data: o.t.booked_on, kwota: o.typ === 'wplata' ? o.kwota : -o.kwota })),
+        od: poczatekHistorii(),
+        doDnia,
+        stopa,
+        prog
+    });
 }
 
 // =====================================================================
@@ -93,7 +210,7 @@ function operacjeCelow() {
  * Wskaźniki jednego celu wg 8.1. Kwoty w groszach.
  * status: 'osiagniety' | 'zdazysz' | 'za-wolno' | 'bez-terminu' (cel bez terminu w bazie)
  */
-function analizaCelu(cel, operacje = [], M = ostatniMiesiacDanych()) {
+function analizaCelu(cel, operacje = [], M = ostatniMiesiacDanych(), odsetki = odsetkiCelu(cel, operacje)) {
     let wplaty = 0, wyplaty = 0, wplaty6 = 0;
     const miesiecznie = {}; // klucz -> { wplaty, wyplaty }
     const poczatekOkna = przesunKlucz(M, -5);
@@ -111,7 +228,7 @@ function analizaCelu(cel, operacje = [], M = ostatniMiesiacDanych()) {
     }
 
     const cel_gr = cel.target_gr || 0;
-    const saldo = (cel.opening_balance_gr || 0) + wplaty - wyplaty;
+    const saldo = (cel.opening_balance_gr || 0) + wplaty - wyplaty + odsetki.netto;
     const postep = cel_gr > 0 ? Math.min(1, Math.max(0, saldo / cel_gr)) : 0;
     const brakuje = Math.max(0, cel_gr - saldo);
     const srednia = wplaty6 / 6; // miesiąc bez wpłaty liczy się jako 0
@@ -128,7 +245,7 @@ function analizaCelu(cel, operacje = [], M = ostatniMiesiacDanych()) {
     const szacowanyKlucz = brakuje > 0 && srednia > 0 ? przesunKlucz(M, Math.ceil(brakuje / srednia)) : null;
 
     return {
-        M, saldo, postep, brakuje, srednia, wplaty, wyplaty,
+        M, saldo, postep, brakuje, srednia, wplaty, wyplaty, odsetki,
         terminKlucz, miesiecyDoTerminu, potrzebna, status, szacowanyKlucz, miesiecznie
     };
 }

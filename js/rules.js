@@ -84,7 +84,7 @@ function dopasujRegule(t) {
     return null;
 }
 
-// Podział wydatku na 2–3 części: t.splits = [{ category, amount_gr }] (kwoty ujemne jak transakcja).
+// Podział wydatku na 2–5 części (limit: MAKS_CZESCI w transakcje.js): t.splits = [{ category, amount_gr }] (kwoty ujemne jak transakcja).
 // Uznajemy go tylko, gdy jest kompletny: każda część ma kategorię, a suma części = kwota transakcji.
 function podzialTransakcji(t) {
     const p = t.splits;

@@ -370,14 +370,14 @@ async function zmienKategorieTransakcji(id, nowaKat) {
 }
 
 // =====================================================================
-// PODZIAŁ TRANSAKCJI NA 2–3 KATEGORIE (rzadko używany, ukryty na dole listy kategorii)
+// PODZIAŁ TRANSAKCJI NA 2–5 KATEGORII (rzadko używany, ukryty na dole listy kategorii)
 // Zapis: kolumna transakcje.splits = [{ category, amount_gr }], kwoty ujemne jak transakcja.
 // Ostatnia część = reszta, więc suma zawsze równa się kwocie transakcji.
 // Podział nie tworzy reguły „Zapamiętaj dla podobnych”.
 // =====================================================================
 
 const PODZIEL = '__PODZIEL__';
-const MAKS_CZESCI = 3;
+const MAKS_CZESCI = 5;
 
 function moznaPodzielic(t, k) {
     return t.amount_gr < 0 && (k.typ === 'wydatek' || k.typ === 'pominiete');

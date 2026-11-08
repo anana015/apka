@@ -52,6 +52,16 @@ const KATEGORIE_STALE = ['Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda', 'U
 // Docelowa stopa oszczędności w % (pkt 9.1); użytkownik zmienia ją w Ustawieniach
 const DOCELOWA_STOPA_DOMYSLNA = 15;
 
+// ---- Oprocentowanie subkont celów -----------------------------------
+// Wartości domyślne dla celów, które nie mają własnych ustawień (pola interest_rate,
+// interest_threshold_gr w tabeli goals). Odsetki są szacowane: bank dopisuje je na
+// subkoncie, więc nie widać ich w wyciągu z konta głównego.
+const ODSETKI_STOPA_DOMYSLNA = 0.5;          // % w skali roku
+const ODSETKI_PROG_DOMYSLNY_GR = 100000;     // 1000 zł – odsetki tylko od nadwyżki ponad próg
+const PODATEK_BELKI = 0.19;                  // podatek od zysków kapitałowych
+const MIESIECY_MIEDZY_KAPITALIZACJAMI = 1;   // 1 = co miesiąc, 3 = co kwartał, 12 = raz w roku
+const DNI_W_ROKU_ODSETKI = 365;
+
 // Kategorie startowe jako wiersze tabeli categories
 function kategorieDomyslne() {
     return KATEGORIE_DOMYSLNE.map((name, i) => ({
