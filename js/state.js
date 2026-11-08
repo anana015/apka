@@ -22,6 +22,7 @@ let stan = {
     filtrKategorii: null,         // nazwa kategorii (wejście z Pulpitu) albo null
     zakresTransakcji: null,       // { od, do } – zakres dat z Pulpitu albo null
     podzial: null,                // edytowany podział: { id, czesci: [{ category, kwota }] }
+    szczegolyTransakcji: null,    // id transakcji z otwartym panelem „Notatka i paragon”
     miesiacWybrany: null,
     trybFiltraPulpit: 'miesiac', // 'miesiac' lub 'zakres'
     pulpitDataOd: '',
@@ -55,6 +56,7 @@ function wyczyscDaneBudzetu() {
         kategorieZBazy: false,
         importy: null,
         wyborKategorii: null,
+        szczegolyTransakcji: null,
         filtrTransakcji: 'wszystkie',
         miesiacTransakcji: null,
         filtrKategorii: null,

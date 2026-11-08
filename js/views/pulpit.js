@@ -40,6 +40,19 @@ function wybierzMiesiacPulpit(m) {
     odswiezPulpit();
 }
 
+// Transakcje okresu wybranego na Pulpicie: miesiąc albo zakres dat
+function transakcjeOkresuPulpitu() {
+    if (stan.trybFiltraPulpit === 'miesiac') {
+        return stan.transakcje.filter(t => t.booked_on.startsWith(stan.miesiacWybrany));
+    }
+    return stan.transakcje.filter(t => {
+        const data = t.booked_on;
+        if (stan.pulpitDataOd && data < stan.pulpitDataOd) return false;
+        if (stan.pulpitDataDo && data > stan.pulpitDataDo) return false;
+        return true;
+    });
+}
+
 function odswiezPulpit() {
     // Stan pusty (10.3)
     const brakDanych = stan.transakcje.length === 0;
@@ -60,20 +73,14 @@ function odswiezPulpit() {
     }).join('');
 
     const trybMiesiac = stan.trybFiltraPulpit === 'miesiac';
-    const transOkres = trybMiesiac
-        ? stan.transakcje.filter(t => t.booked_on.startsWith(stan.miesiacWybrany))
-        : stan.transakcje.filter(t => {
-            const data = t.booked_on;
-            if (stan.pulpitDataOd && data < stan.pulpitDataOd) return false;
-            if (stan.pulpitDataDo && data > stan.pulpitDataDo) return false;
-            return true;
-        });
+    const transOkres = transakcjeOkresuPulpitu();
 
     const s = podsumuj(transOkres);
     const stopa = s.przychody > 0 ? Math.round((s.netto / s.przychody) * 100) : 0;
 
     document.getElementById('pulpit-przychody').innerText = zl(s.przychody);
     document.getElementById('pulpit-wydatki').innerText = zl(s.wydatki);
+    document.getElementById('pulpit-wydatki-zwroty').innerText = s.zwroty > 0 ? `po odjęciu zwrotów ${zl(s.zwroty)}` : '';
     document.getElementById('pulpit-oszczednosci').innerText = zl(s.netto);
     document.getElementById('pulpit-stopa-proc').innerText = s.wyplaty > 0
         ? `wpłaty ${zl(s.wplaty)} − wypłaty ${zl(s.wyplaty)} · ${stopa}%`
@@ -89,6 +96,7 @@ function odswiezPulpit() {
     } else alertBox.classList.add('hidden');
 
     rysujKarteCelow();
+    rysujOszczednosciPulpitu(transOkres);
     rysujKategoriePulpitu(s.kategorie, trybMiesiac);
 }
 
@@ -127,24 +135,25 @@ function rysujKarteCelow() {
 }
 
 // ---- „Wydatki według kategorii” z paskami i limitami (6, #9 i #10) ------
+// Kategoria może mieć kwotę ujemną, gdy zwroty w okresie przewyższyły zakupy.
 
 function rysujKategoriePulpitu(kategorie, trybMiesiac) {
     const lista = document.getElementById('pulpit-kategorie-lista');
-    const posortowane = Object.entries(kategorie).sort((a, b) => b[1] - a[1]);
+    const posortowane = Object.entries(kategorie).filter(([, kwota]) => kwota !== 0).sort((a, b) => b[1] - a[1]);
     if (posortowane.length === 0) {
         lista.innerHTML = `<p class="text-[var(--muted)] text-xs">Brak wydatków w tym okresie.</p>`;
         return;
     }
-    const najwieksza = posortowane[0][1];
+    const najwieksza = Math.max(...posortowane.map(([, kwota]) => kwota));
 
     lista.innerHTML = posortowane.map(([kat, kwota]) => {
         const kolor = kolorKategorii(kat);
-        const dlugosc = najwieksza > 0 ? (kwota / najwieksza) * 100 : 0;
+        const dlugosc = najwieksza > 0 ? Math.max(0, (kwota / najwieksza) * 100) : 0;
         const kategoria = kategoriaPoNazwie(kat);
         const limit = trybMiesiac && kategoria && kategoria.monthly_limit_gr > 0 ? kategoria.monthly_limit_gr : null;
         let linijkaLimitu = '';
         if (limit) {
-            const wykorzystanie = kwota / limit;
+            const wykorzystanie = Math.max(0, kwota) / limit;
             const ostrzezenie = wykorzystanie >= PROG_OSTRZEZENIA_LIMITU;
             // <span class="block">, bo wiersz jest przyciskiem (w <button> nie może być <p>)
             linijkaLimitu = `<span class="block text-[10px] ${ostrzezenie ? 'text-[var(--c-spend)] font-bold' : 'text-[var(--muted)]'}">Limit ${zl(limit)} · wykorzystano ${Math.round(wykorzystanie * 100)}%</span>`;

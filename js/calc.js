@@ -19,14 +19,31 @@ function liczBezKategorii() {
 // Sumy dla listy transakcji. Pominięte nie wchodzą do żadnej sumy.
 // Wydatek w kategorii oszczędnościowej (np. „Akcje/Obligacje”) liczy się jak wpłata
 // na oszczędności: do wplaty i odłożonego netto, nie do wydatków ani listy kategorii.
-// s.inwestycje = ta część wpłat (do podpisów), s.kategorieOszczednosci = rozbicie wg kategorii.
+// s.inwestycje = ta część wpłat (do podpisów), s.kategorieOszczednosci = rozbicie wg kategorii (netto).
+//
+// Zwrot (specyfikacja 11.1): wpływ z ręcznie wybraną kategorią nie jest przychodem, tylko
+// pomniejsza wydatki tej kategorii (s.zwroty = ich suma). Wpływ w kategorii oszczędnościowej
+// (np. sprzedaż obligacji) to wypłata z oszczędności: wyplaty, nie przychód.
 function podsumuj(lista) {
-    const s = { przychody: 0, wydatki: 0, wplaty: 0, wyplaty: 0, inwestycje: 0, kategorie: {}, kategorieOszczednosci: {} };
+    const s = {
+        przychody: 0, wydatki: 0, wplaty: 0, wyplaty: 0, zwroty: 0,
+        inwestycje: 0, inwestycjeWyplaty: 0, kategorie: {}, kategorieOszczednosci: {}
+    };
     for (const t of lista) {
         const k = klasyfikuj(t);
         const kwota = Math.abs(t.amount_gr);
         if (k.typ === 'przychod') {
-            s.przychody += kwota;
+            if (!k.kategoria) {
+                s.przychody += kwota;
+            } else if (czyKategoriaOszczednosciowa(k.kategoria)) {
+                s.wyplaty += kwota;
+                s.inwestycjeWyplaty += kwota;
+                s.kategorieOszczednosci[k.kategoria] = (s.kategorieOszczednosci[k.kategoria] || 0) - kwota;
+            } else {
+                s.wydatki -= kwota;
+                s.zwroty += kwota;
+                s.kategorie[k.kategoria] = (s.kategorie[k.kategoria] || 0) - kwota;
+            }
         } else if (k.typ === 'wydatek') {
             // Podzielony wydatek: każda część do swojej kategorii; część „Pomiń” nie wchodzi do sum
             const czesci = k.podzial

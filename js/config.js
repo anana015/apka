@@ -13,8 +13,8 @@ const POMIN = 'Pomiń';
 const PREFIKS_CELU = 'SKARBONKA:';
 
 // Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli lub kolumny
-// (najnowszy skrypt; wymaga wcześniejszych: migracja_2026-11.sql i migracja_2026-11b_budzet_osobisty.sql)
-const PLIK_MIGRACJI = 'supabase/migracja_2026-11c_kategorie_oszczednosci.sql';
+// (najnowszy skrypt; wymaga wcześniejszych: migracja_2026-11.sql, 2026-11b_budzet_osobisty, 2026-11c_kategorie_oszczednosci)
+const PLIK_MIGRACJI = 'supabase/migracja_2026-11d_notatki_paragony.sql';
 
 // Kategorie startowe budżetu wspólnego. Przy pierwszym uruchomieniu trafiają do tabeli
 // categories, potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.

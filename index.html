@@ -126,6 +126,7 @@
                     <div class="card">
                         <span class="tile-label">Wydatki</span>
                         <p class="tile-value kwota text-[var(--c-spend)]" id="pulpit-wydatki">0 zł</p>
+                        <span class="tile-note" id="pulpit-wydatki-zwroty"></span>
                     </div>
                     <div class="card">
                         <span class="tile-label" title="Wpłaty na cele i kategorie oszczędnościowe (np. Akcje/Obligacje) minus wypłaty z celów">Odłożone (netto)</span>
@@ -149,6 +150,27 @@
                     <div id="pulpit-cele-pasek" class="flex h-2.5 w-full rounded-full overflow-hidden bg-[var(--bg)]" aria-hidden="true"></div>
                     <div id="pulpit-cele-legenda" class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--muted)]"></div>
                     <p id="pulpit-cele-podpis" class="text-[11px] text-[var(--muted)]"></p>
+                </article>
+
+                <!-- Oszczędności w kategoriach z przełącznikiem „Oszczędność” (np. Akcje/Obligacje) – rysuje oszczednosci.js -->
+                <article id="pulpit-oszcz-kat" class="hidden card space-y-2 pulpit-tresc" aria-labelledby="pulpit-oszcz-kat-tytul">
+                    <div class="flex justify-between items-baseline gap-2">
+                        <h2 id="pulpit-oszcz-kat-tytul" class="font-semibold text-sm">Oszczędności w kategoriach</h2>
+                        <span class="text-[11px] text-[var(--muted)]">poza celami</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <span class="tile-label">W wybranym okresie</span>
+                            <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-oszcz-kat-okres">0 zł</p>
+                            <span class="tile-note" id="pulpit-oszcz-kat-podpis"></span>
+                        </div>
+                        <div>
+                            <span class="tile-label">Zebrane łącznie</span>
+                            <p class="tile-value kwota" id="pulpit-oszcz-kat-lacznie">0 zł</p>
+                            <span class="tile-note">od początku historii</span>
+                        </div>
+                    </div>
+                    <div id="pulpit-oszcz-kat-lista" class="space-y-1 text-sm pt-1"></div>
                 </article>
 
                 <div class="card space-y-3 pulpit-tresc">
@@ -374,6 +396,26 @@
                     <div id="stat-wykres-saldo"></div>
                 </article>
 
+                <!-- Oszczędności w kategoriach (np. Akcje/Obligacje) – rysuje oszczednosci.js -->
+                <article id="stat-oszcz-kat" class="hidden card space-y-3 stat-tresc">
+                    <h2 class="font-semibold text-sm">Oszczędności w kategoriach</h2>
+                    <div id="stat-oszcz-kat-kafelki" class="grid grid-cols-2 gap-3"></div>
+                    <div id="stat-oszcz-kat-wykres"></div>
+                    <div class="flex gap-4 justify-center text-[11px] text-[var(--muted)]">
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-save)]"></span>Wpłaty</span>
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-spend)]"></span>Wypłaty</span>
+                    </div>
+                    <table class="w-full text-xs">
+                        <thead class="text-[10px] text-[var(--muted)]">
+                            <tr><th class="text-left font-normal pb-1">Kategoria</th>
+                                <th class="text-right font-normal pb-1">W tym roku</th>
+                                <th class="text-right font-normal pb-1">Średnio / mies.</th>
+                                <th class="text-right font-normal pb-1">Łącznie</th></tr>
+                        </thead>
+                        <tbody id="stat-oszcz-kat-tabela"></tbody>
+                    </table>
+                </article>
+
                 <!-- 9.2.7 Porównanie lat -->
                 <article class="card space-y-2 stat-tresc">
                     <h2 class="font-semibold text-sm">Porównanie lat</h2>
@@ -444,6 +486,25 @@
                     </form>
                 </article>
 
+                <!-- Reguły otwartego budżetu: fraza / numer konta → kategoria (rysuje ustawienia.js) -->
+                <article class="card space-y-3 span-all">
+                    <div class="flex justify-between items-center gap-2 flex-wrap">
+                        <h2 class="font-semibold text-sm">Reguły <span id="reg-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                        <span id="reg-info" class="text-[11px] text-[var(--muted)]"></span>
+                    </div>
+                    <p class="text-[10px] text-[var(--muted)]">Reguła nadaje kategorię wydatkom, których kontrahent lub tytuł zawiera wszystkie słowa frazy. Fraza z samych cyfr (np. numer konta) porównywana jest z rachunkiem drugiej strony. Ręcznie wybrana kategoria zawsze ma pierwszeństwo; z kilku pasujących reguł wygrywa numer konta, potem najnowsza.</p>
+                    <label for="reg-filtr" class="sr-only">Szukaj reguły</label>
+                    <input type="search" id="reg-filtr" oninput="rysujRegulyUstawien()" placeholder="Szukaj frazy albo kategorii…" class="input">
+                    <div id="reg-lista" class="scroll-box"></div>
+                    <form onsubmit="dodajRegule(event)" class="flex flex-wrap gap-2 pt-1">
+                        <label for="reg-nowa-fraza" class="sr-only">Fraza nowej reguły</label>
+                        <input type="text" id="reg-nowa-fraza" maxlength="60" placeholder="Fraza, np. ORLEN albo numer konta" class="input flex-1 min-w-[10rem]">
+                        <label for="reg-nowa-kat" class="sr-only">Kategoria nowej reguły</label>
+                        <select id="reg-nowa-kat" class="input !w-auto max-w-[13rem]"></select>
+                        <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj regułę</button>
+                    </form>
+                </article>
+
                 <article class="card space-y-3">
                     <h2 class="font-semibold text-sm">Eksport do Excela</h2>
                     <div>
@@ -506,10 +567,12 @@
     <script src="js/db.js"></script>
     <script src="js/views/pulpit.js"></script>
     <script src="js/views/transakcje.js"></script>
+    <script src="js/views/paragony.js"></script>
     <script src="js/banki.js"></script>
     <script src="js/views/import.js"></script>
     <script src="js/views/cele.js"></script>
     <script src="js/views/statystyki.js"></script>
+    <script src="js/views/oszczednosci.js"></script>
     <script src="js/views/ustawienia.js"></script>
     <script src="js/app.js"></script>
 </body>

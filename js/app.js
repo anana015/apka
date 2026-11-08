@@ -175,6 +175,7 @@ function zmienZakladke(nazwa, opcje = {}) {
     if (nazwa === 'import') przygotujEkranImportu();
     stan.otwartyCel = null;           // klik w zakładkę zamyka otwarte szczegóły (10.1)
     stan.podzial = null;              // i niezapisany podział transakcji
+    stan.szczegolyTransakcji = null;  // i panel notatki / paragonu
     stan.kategoriaDoUsuniecia = null; // i niepotwierdzone usunięcie kategorii
     zamknijFormularzCelu();
 
@@ -198,7 +199,7 @@ const ODSWIEZANIE_EKRANOW = {
     transakcje: () => odswiezTransakcje(),
     import: () => odswiezImport(),
     cele: () => odswiezCele(),
-    statystyki: () => odswiezStatystyki(),
+    statystyki: () => { odswiezStatystyki(); rysujOszczednosciStatystyk(); },
     ustawienia: () => odswiezUstawienia()
 };
 

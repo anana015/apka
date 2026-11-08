@@ -93,16 +93,31 @@ function pasujeRegula(t, fraza) {
 
 // Reguły rachunku są dokładniejsze, więc sprawdzamy je pierwsze; potem frazy.
 // dynamiczneReguly są posortowane od najnowszej, więc wygrywa najnowsza pasująca reguła.
-function dopasujRegule(t) {
+function regulaDlaTransakcji(t) {
     for (const rachunku of [true, false]) {
         for (const regula of dynamiczneReguly) {
             const fraza = regula.phrase || regula.keyword;
-            if (czyRegulaRachunku(fraza) === rachunku && pasujeRegula(t, fraza)) {
-                return regula.category || regula.category_name;
-            }
+            if (czyRegulaRachunku(fraza) === rachunku && pasujeRegula(t, fraza)) return regula;
         }
     }
     return null;
+}
+
+function dopasujRegule(t) {
+    const regula = regulaDlaTransakcji(t);
+    return regula ? (regula.category || regula.category_name) : null;
+}
+
+// Ile transakcji dostaje kategorię od każdej reguły: { [id reguły]: liczba }.
+// Liczą się tylko wydatki bez ręcznego wyboru i bez podziału – tam regula naprawdę decyduje.
+function trafieniaRegul() {
+    const wynik = {};
+    for (const t of stan.transakcje) {
+        if (!(t.amount_gr < 0) || t.category_manual || podzialTransakcji(t) || znajdzCel(t)) continue;
+        const regula = regulaDlaTransakcji(t);
+        if (regula) wynik[regula.id] = (wynik[regula.id] || 0) + 1;
+    }
+    return wynik;
 }
 
 // Podział wydatku na 2–5 części (limit: MAKS_CZESCI w transakcje.js): t.splits = [{ category, amount_gr }] (kwoty ujemne jak transakcja).

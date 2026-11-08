@@ -20,7 +20,9 @@ const NAZWY_TYPOW = {
     wydatek: 'Wydatek',
     wplata: 'Oszczędności',
     wyplata: 'Wypłata z celu',
-    pominiete: 'Pominięte'
+    pominiete: 'Pominięte',
+    zwrot: 'Zwrot',
+    wyplataOszczednosci: 'Wypłata z oszczędności'
 };
 
 // Nazwy zarezerwowane: „Pomiń” jest systemowa, pozostałe to etykiety brakującej kategorii
@@ -50,6 +52,7 @@ function odswiezUstawienia() {
     rysujKontoWspolne();
     rysujKategorieUstawien();
     rysujWyborKategorii();
+    rysujRegulyUstawien();
 
     const konto = document.getElementById('ust-konto');
     supabaseClient.auth.getUser()
@@ -486,6 +489,141 @@ async function zapiszKontoWspolne(e) {
     pokazKomunikat(`Zapisano: przelewy na konto wspólne → ${KATEGORIA_PRZELEW_WSPOLNE}` + (ile ? ` (${ile} już zaimportowanych)` : ''));
 }
 
+// =====================================================================
+// LISTA REGUŁ (otwartego budżetu)
+// Reguła = fraza → kategoria (wydatek, którego kontrahent lub tytuł zawiera wszystkie słowa
+// frazy) albo numer konta → kategoria (rachunek drugiej strony). Przy kilku pasujących
+// wygrywa reguła numeru konta, potem najnowsza (rules.js).
+// =====================================================================
+
+const MIN_DLUGOSC_FRAZY = 3;
+
+function regulaPoId(id) {
+    return dynamiczneReguly.find(r => String(r.id) === String(id)) || null;
+}
+
+function opcjeKategoriiReguly(wybrana) {
+    const nazwy = stan.kategorie.map(k => k.name);
+    const brakujaca = wybrana && !nazwy.includes(wybrana)
+        ? `<option value="${esc(wybrana)}" selected>${esc(wybrana)} (brak takiej kategorii)</option>` : '';
+    return brakujaca + nazwy.map(n => `<option value="${esc(n)}" ${n === wybrana ? 'selected' : ''}>${esc(n)}</option>`).join('');
+}
+
+// Fraza poprawna i niezajęta. Zwraca komunikat błędu albo ''.
+function bladFrazyReguly(fraza, pomijaneId = null) {
+    if (normalizuj(fraza).replace(/\s+/g, '').length < MIN_DLUGOSC_FRAZY) return `Fraza musi mieć co najmniej ${MIN_DLUGOSC_FRAZY} znaki.`;
+    const zajeta = dynamiczneReguly.find(r => String(r.id) !== String(pomijaneId) &&
+        normalizuj(czyRegulaRachunku(r.phrase) ? czystyNumer(r.phrase) : r.phrase) ===
+        normalizuj(czyRegulaRachunku(fraza) ? czystyNumer(fraza) : fraza));
+    return zajeta ? `Reguła „${zajeta.phrase}” już istnieje (→ ${zajeta.category}).` : '';
+}
+
+function rysujRegulyUstawien() {
+    const lista = document.getElementById('reg-lista');
+    const szukaj = normalizuj(document.getElementById('reg-filtr').value.trim());
+    const trafienia = trafieniaRegul();
+    document.getElementById('reg-budzet').innerText = `· ${nazwaBudzetu().toLowerCase()}`;
+    document.getElementById('reg-info').innerText =
+        `${dynamiczneReguly.length} ${odmiana(dynamiczneReguly.length, 'reguła', 'reguły', 'reguł')}`;
+
+    const nowaKat = document.getElementById('reg-nowa-kat');
+    const wybranaNowa = nowaKat.value;
+    nowaKat.innerHTML = `<option value="">Kategoria…</option>` + opcjeKategoriiReguly(null);
+    if (stan.kategorie.some(k => k.name === wybranaNowa)) nowaKat.value = wybranaNowa;
+
+    const widoczne = dynamiczneReguly.filter(r => !szukaj ||
+        normalizuj(r.phrase).includes(szukaj) || normalizuj(r.category).includes(szukaj));
+    if (widoczne.length === 0) {
+        lista.innerHTML = `<p class="text-xs text-[var(--muted)] py-2">${dynamiczneReguly.length
+            ? 'Żadna reguła nie pasuje do wyszukiwania.'
+            : 'Nie ma jeszcze reguł. Powstają same, gdy wybierasz kategorię z włączonym „Zapamiętaj dla podobnych”, albo dodaj je poniżej.'}</p>`;
+        return;
+    }
+
+    lista.innerHTML = widoczne.map(r => {
+        const id = esc(r.id);
+        const rachunek = czyRegulaRachunku(r.phrase);
+        const n = trafienia[r.id] || 0;
+        return `
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 py-2 border-b border-[var(--border)] text-xs">
+                <input type="text" value="${esc(r.phrase)}" maxlength="60" onchange="zmienFrazeReguly('${id}', this)"
+                    class="input !py-1.5 flex-1 min-w-[8rem] ${rachunek ? 'kwota' : ''}" aria-label="Fraza reguły ${esc(r.phrase)}">
+                <span class="text-[var(--muted)]" aria-hidden="true">→</span>
+                <select onchange="zmienKategorieReguly('${id}', this.value)" class="input !py-1.5 !w-auto max-w-[13rem]" aria-label="Kategoria reguły ${esc(r.phrase)}">
+                    ${opcjeKategoriiReguly(r.category)}
+                </select>
+                <span class="text-[10px] text-[var(--muted)] whitespace-nowrap ml-auto" title="Transakcje, którym ta reguła nadaje kategorię">
+                    ${rachunek ? 'numer konta · ' : ''}${n} ${odmiana(n, 'transakcja', 'transakcje', 'transakcji')}
+                </span>
+                <button type="button" onclick="usunRegule('${id}')" class="p-1 text-[var(--muted)] hover:text-[var(--c-spend)]" aria-label="Usuń regułę ${esc(r.phrase)}">✕</button>
+            </div>`;
+    }).join('');
+}
+
+async function zmienFrazeReguly(id, pole) {
+    const r = regulaPoId(id);
+    if (!r) return;
+    const fraza = pole.value.trim();
+    if (fraza === r.phrase) return;
+    const blad = bladFrazyReguly(fraza, id);
+    if (blad) {
+        pokazKomunikat(blad);
+        pole.value = r.phrase;
+        return;
+    }
+    const zapis = czyRegulaRachunku(fraza) ? czystyNumer(fraza) : fraza.toUpperCase();
+    const { error } = await supabaseClient.from('rules').update({ phrase: zapis }).eq('id', id);
+    if (error) {
+        pokazKomunikat(komunikatBledu(error, 'Nie zapisano reguły'));
+        pole.value = r.phrase;
+        return;
+    }
+    r.phrase = zapis;
+    odswiezInterfejs();
+    pokazKomunikat(`Reguła: ${zapis} → ${r.category}`);
+}
+
+async function zmienKategorieReguly(id, kategoria) {
+    const r = regulaPoId(id);
+    if (!r || !kategoria || kategoria === r.category) return;
+    const { error } = await supabaseClient.from('rules').update({ category: kategoria }).eq('id', id);
+    if (error) {
+        pokazKomunikat(komunikatBledu(error, 'Nie zapisano reguły'));
+        return rysujRegulyUstawien();
+    }
+    r.category = kategoria;
+    odswiezInterfejs();
+    pokazKomunikat(`Reguła: ${r.phrase} → ${kategoria}`);
+}
+
+async function usunRegule(id) {
+    const r = regulaPoId(id);
+    if (!r) return;
+    const { error } = await supabaseClient.from('rules').delete().eq('id', id);
+    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie usunięto reguły'));
+    dynamiczneReguly = dynamiczneReguly.filter(x => x !== r);
+    odswiezInterfejs();
+    pokazKomunikat(`Usunięto regułę ${r.phrase}`);
+}
+
+async function dodajRegule(e) {
+    e.preventDefault();
+    const poleFrazy = document.getElementById('reg-nowa-fraza');
+    const fraza = poleFrazy.value.trim();
+    const kategoria = document.getElementById('reg-nowa-kat').value;
+    const blad = bladFrazyReguly(fraza) || (kategoria ? '' : 'Wybierz kategorię reguły.');
+    if (blad) return pokazKomunikat(blad);
+
+    const zapis = czyRegulaRachunku(fraza) ? czystyNumer(fraza) : fraza.toUpperCase();
+    const { data, error } = await supabaseClient.from('rules').insert([{ phrase: zapis, category: kategoria }]).select();
+    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie dodano reguły'));
+    dynamiczneReguly.unshift(data && data[0] ? data[0] : { id: `tmp-${Date.now()}`, phrase: zapis, category: kategoria });
+    poleFrazy.value = '';
+    odswiezInterfejs();
+    const n = trafieniaRegul()[dynamiczneReguly[0].id] || 0;
+    pokazKomunikat(`Dodano regułę ${zapis} → ${kategoria}` + (n ? ` (${n} ${odmiana(n, 'transakcja', 'transakcje', 'transakcji')})` : ''));
+}
+
 // ---- Pobranie pliku --------------------------------------------------
 
 function pobierzPlik(nazwaPliku, tresc, typ) {
@@ -556,6 +694,15 @@ function poleCSV(wartosc, tekstowe = true) {
     return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+// Typ do eksportu: wydatek w kategorii oszczędnościowej = oszczędności, wpływ z kategorią = zwrot
+function typDoEksportu(k) {
+    if (czyWydatekOszczednosciowy(k)) return NAZWY_TYPOW.wplata;
+    if (k.typ === 'przychod' && k.kategoria) {
+        return czyKategoriaOszczednosciowa(k.kategoria) ? NAZWY_TYPOW.wyplataOszczednosci : NAZWY_TYPOW.zwrot;
+    }
+    return NAZWY_TYPOW[k.typ] || k.typ;
+}
+
 function kategoriaLubCel(k) {
     if (k.typ === 'wydatek') return k.kategoria || 'Bez kategorii';
     if (k.typ === 'wplata' || k.typ === 'wyplata') return k.cel ? k.cel.name : '';
@@ -588,7 +735,7 @@ function eksportujCSV() {
                     : czyKategoriaOszczednosciowa(c.category) ? NAZWY_TYPOW.wplata : NAZWY_TYPOW.wydatek,
                 kategoria: c.category === POMIN ? '' : c.category
             }))
-            : [{ tytul: t.title, kwota: t.amount_gr, typ: czyWydatekOszczednosciowy(k) ? NAZWY_TYPOW.wplata : (NAZWY_TYPOW[k.typ] || k.typ), kategoria: kategoriaLubCel(k) }];
+            : [{ tytul: t.title, kwota: t.amount_gr, typ: typDoEksportu(k), kategoria: kategoriaLubCel(k) }];
         for (const c of czesci) {
             wiersze.push([
                 poleCSV(t.booked_on),

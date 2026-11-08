@@ -45,8 +45,10 @@ function pasujeDoFiltra(wiersz, filtr) {
     return true;
 }
 
-// Wydatek należy do kategorii: wprost, przez część podziału albo (BEZ_KATEGORII) bez kategorii
+// Wydatek należy do kategorii: wprost, przez część podziału albo (BEZ_KATEGORII) bez kategorii.
+// Zwrot (wpływ z wybraną kategorią) też należy do swojej kategorii – pomniejsza jej sumę.
 function pasujeDoKategorii(k, kategoria) {
+    if (k.typ === 'przychod') return !!k.kategoria && k.kategoria === kategoria;
     if (k.typ !== 'wydatek') return false;
     if (kategoria === BEZ_KATEGORII) return !k.kategoria && !k.podzial;
     return k.kategoria === kategoria || (!!k.podzial && k.podzial.some(c => c.category === kategoria));
@@ -174,12 +176,18 @@ function wierszTransakcji({ t, k }) {
                 <p class="font-semibold truncate">${esc(t.counterparty || 'Brak kontrahenta')}</p>
                 ${t.title ? `<p class="text-[11px] text-[var(--muted)] line-clamp-2 mt-0.5 leading-tight">${esc(t.title)}</p>` : ''}
                 ${t.account_number && (k.typ === 'wplata' || k.typ === 'wyplata') ? `<p class="text-[10px] text-[var(--accent)] font-mono mt-0.5 truncate">Konto: ${esc(t.account_number)}</p>` : ''}
-                <time class="inline-block text-[10px] text-[var(--muted)] mt-1" datetime="${esc(t.booked_on)}">${esc(t.booked_on)}</time>
+                ${opisNotatkiWWierszu(t)}
+                <time class="inline-block text-[10px] text-[var(--muted)] mt-1" datetime="${esc(t.booked_on)}">${esc(t.booked_on)}</time>${k.typ === 'przychod' && k.kategoria
+                    ? `<span class="text-[10px] text-[var(--muted)]"> · ${czyKategoriaOszczednosciowa(k.kategoria) ? 'wypłata z oszczędności' : 'zwrot – pomniejsza wydatki kategorii'}</span>` : ''}
                 ${k.podzial ? `<p class="text-[10px] text-[var(--muted)] mt-0.5">${opisPodzialu}</p>` : ''}
             </div>
             <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
                 <div class="flex items-center gap-1">
                     <span class="font-bold kwota ${klasaKwoty(k)}">${(t.amount_gr / 100).toFixed(2)} zł</span>
+                    <button type="button" onclick="otworzSzczegolyTransakcji('${esc(t.id)}')" class="${t.note || t.receipt_path ? 'text-[var(--accent)]' : 'text-[var(--muted)]'} hover:text-[var(--accent)] transition p-1"
+                        title="Notatka i paragon" aria-label="Notatka i paragon" aria-expanded="${stan.szczegolyTransakcji === String(t.id)}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
+                    </button>
                     <button type="button" onclick="usunTransakcje('${esc(t.id)}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1" title="Usuń transakcję" aria-label="Usuń transakcję">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     </button>
@@ -188,6 +196,7 @@ function wierszTransakcji({ t, k }) {
             </div>
           </div>
           ${edytorPodzialu(t)}
+          ${panelSzczegolowTransakcji(t)}
         </article>`;
 }
 
@@ -280,6 +289,7 @@ function odswiezTransakcje() {
     podsumowanie.innerText = kategoria
         ? `${dane.length} ${odmianaTransakcji(dane.length)} · razem w kategorii ${zl(wKategorii, 2)}`
         : `${dane.length} ${odmianaTransakcji(dane.length)} · wpływy ${zl(s.przychody + s.wyplaty, 2)} · wydatki ${zl(s.wydatki, 2)}` +
+            (s.zwroty ? ` (po odjęciu zwrotów ${zl(s.zwroty, 2)})` : '') +
             (s.inwestycje ? ` · odłożone w kategoriach ${zl(s.inwestycje, 2)}` : '');
 
     // „Wszystkie miesiące”: sekcje miesięcy od najnowszego, w środku data rosnąco
@@ -303,11 +313,13 @@ function odmianaTransakcji(n) {
 async function usunTransakcje(id) {
     if (!confirm('Czy na pewno chcesz usunąć tę transakcję?')) return;
 
+    const usuwana = stan.transakcje.find(t => String(t.id) === String(id));
     const { error } = await supabaseClient.from('transakcje').delete().eq('id', id);
     if (error) {
         pokazKomunikat('Nie udało się usunąć: ' + error.message);
         return;
     }
+    if (usuwana) await usunPlikParagonu(usuwana.receipt_path);
     stan.transakcje = stan.transakcje.filter(t => String(t.id) !== String(id));
     odswiezInterfejs();
     pokazKomunikat('Usunięto transakcję');
@@ -416,6 +428,7 @@ function otworzPodzial(id) {
         : [{ category: k.kategoria || '', kwota: '' }, { category: '', kwota: '' }];
     czesci[czesci.length - 1].kwota = ''; // ostatnia = reszta
     stan.podzial = { id: String(id), czesci };
+    stan.szczegolyTransakcji = null;
     odswiezTransakcje();
 }
 
