@@ -16,10 +16,12 @@ let stan = {
     statKategoria: null, // kategoria wybrana w karcie „Trend kategorii”
     transakcje: [],
     cele: [],
-    kategorie: KATEGORIE_DOMYSLNE.map(name => ({ name }))
+    // Kategorie: { id?, name, color, monthly_limit_gr, is_fixed, sort_order }
+    kategorie: kategorieDomyslne(),
+    kategorieZBazy: false,        // false = brak tabeli categories, używamy listy z config.js
+    kategoriaDoUsuniecia: null,   // id kategorii z otwartym potwierdzeniem usunięcia
+    importy: null                 // historia importów (null = brak tabeli imports)
 };
 
 // Reguły posortowane od najnowszej (najnowsza pasująca wygrywa)
 let dynamiczneReguly = [];
-
-let przygotowaneTransakcjeCSV = [];

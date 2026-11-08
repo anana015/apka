@@ -84,8 +84,10 @@ function zmienZakladke(nazwa, opcje = {}) {
         // zwykłe wejście pokazuje ten sam miesiąc, który jest wybrany na Pulpicie.
         stan.miesiacTransakcji = opcje.filtr === 'brak' ? null : (stan.miesiacWybrany || null);
     }
-    stan.otwartyCel = null; // klik w zakładkę zamyka otwarte szczegóły (10.1)
-    stan.podzial = null;    // i niezapisany podział transakcji
+    if (nazwa === 'import') przygotujEkranImportu();
+    stan.otwartyCel = null;           // klik w zakładkę zamyka otwarte szczegóły (10.1)
+    stan.podzial = null;              // i niezapisany podział transakcji
+    stan.kategoriaDoUsuniecia = null; // i niepotwierdzone usunięcie kategorii
     zamknijFormularzCelu();
 
     document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));
@@ -106,21 +108,25 @@ function zmienZakladke(nazwa, opcje = {}) {
     odswiezAktywnyEkran();
 }
 
+const ODSWIEZANIE_EKRANOW = {
+    pulpit: () => odswiezPulpit(),
+    transakcje: () => odswiezTransakcje(),
+    import: () => odswiezImport(),
+    cele: () => odswiezCele(),
+    statystyki: () => odswiezStatystyki(),
+    ustawienia: () => odswiezUstawienia()
+};
+
 function odswiezAktywnyEkran() {
-    if (stan.zakladka === 'pulpit') odswiezPulpit();
-    if (stan.zakladka === 'transakcje') odswiezTransakcje();
-    if (stan.zakladka === 'cele') odswiezCele();
-    if (stan.zakladka === 'statystyki') odswiezStatystyki();
-    if (stan.zakladka === 'ustawienia') odswiezUstawienia();
+    const odswiez = ODSWIEZANIE_EKRANOW[stan.zakladka];
+    if (odswiez) odswiez();
 }
 
 function odswiezInterfejs() {
     const bezKat = liczBezKategorii();
     const badge = document.getElementById('badge-transakcje');
-    if (bezKat > 0) {
-        badge.innerText = bezKat;
-        badge.classList.remove('hidden');
-    } else badge.classList.add('hidden');
+    badge.innerText = bezKat;
+    badge.classList.toggle('hidden', bezKat === 0);
 
     // Licznik na zakładce „Cele” = liczba celów „Za wolno” (8.2)
     const zaWolno = liczCeleZaWolno();
@@ -130,13 +136,6 @@ function odswiezInterfejs() {
 
     odswiezAktywnyEkran();
 }
-
-// Wykres Chart.js nie reaguje sam na zmianę trybu jasny/ciemny – przerysowujemy go
-try {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-        if (stan.zakladka === 'statystyki') odswiezStatystyki();
-    });
-} catch (e) {}
 
 // ---- Start ----
 try {

@@ -30,13 +30,26 @@ function czystyNumer(tekst) {
 function liczba(wartosc, miejsca = 0) {
     const v = +Number(wartosc).toFixed(miejsca) || 0;
     const [calkowite, ulamek] = Math.abs(v).toFixed(miejsca).split('.');
-    const zGrupami = calkowite.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const zGrupami = calkowite.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     return `${v < 0 ? '-' : ''}${zGrupami}${ulamek ? ',' + ulamek : ''}`;
 }
 
 // Grosze -> "12 345 zł" / "12 345,67 zł"
 function zl(grosze, miejsca = 0) {
     return `${liczba(grosze / 100, miejsca)} zł`;
+}
+
+// Grosze ze znakiem -> "+12,50 zł" / "−12,50 zł" (lista transakcji, podgląd importu)
+function zlZeZnakiem(grosze) {
+    const znak = grosze > 0 ? '+' : grosze < 0 ? '−' : '';
+    return `${znak}${liczba(Math.abs(grosze) / 100, 2)} zł`;
+}
+
+// Polska odmiana: odmiana(2, 'subkonto', 'subkonta', 'subkont') -> 'subkonta'
+function odmiana(n, jeden, kilka, wiele) {
+    if (n === 1) return jeden;
+    const d = n % 10, s = n % 100;
+    return d >= 2 && d <= 4 && (s < 12 || s > 14) ? kilka : wiele;
 }
 
 // Klucz "2026-10" -> "Październik 2026" (wybór miesiąca, pkt 6 i 7.1).
@@ -57,8 +70,22 @@ function kolorCSS(nazwa) {
     return getComputedStyle(document.documentElement).getPropertyValue(nazwa).trim();
 }
 
-// Kolor kategorii wg grup ze specyfikacji (10.4); nieznane -> "Inne"
+// ---- Kategorie ------------------------------------------------------
+
+function kategoriaPoNazwie(nazwa) {
+    return (stan.kategorie || []).find(k => k.name === nazwa) || null;
+}
+
+// Kolor kategorii: z tabeli categories, a gdy go brak – wg grup ze specyfikacji (10.4)
 function kolorKategorii(nazwa) {
     if (nazwa === 'Nieprzypisane') return 'var(--muted)';
+    const k = kategoriaPoNazwie(nazwa);
+    if (k && k.color) return k.color;
     return KOLORY_GRUP[GRUPA_KATEGORII[nazwa]] || KOLORY_GRUP.Inne;
+}
+
+// Wydatek stały (pole is_fixed): podpis „w tym stałe” i pominięcie w „Trendzie kategorii”
+function czyKategoriaStala(nazwa) {
+    const k = kategoriaPoNazwie(nazwa);
+    return k ? !!k.is_fixed : KATEGORIE_STALE.includes(nazwa);
 }

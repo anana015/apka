@@ -12,6 +12,11 @@ const KONTO_WYPLAT_ZE_SKARBONEK = '79124045461111001148075657';
 const POMIN = 'Pomiń';
 const PREFIKS_CELU = 'SKARBONKA:';
 
+// Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli lub kolumny
+const PLIK_MIGRACJI = 'supabase/migracja_2026-11.sql';
+
+// Kategorie startowe. Przy pierwszym uruchomieniu trafiają do tabeli categories,
+// potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.
 const KATEGORIE_DOMYSLNE = [
     'Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda',
     'Zakupy spożywcze', 'Jedzenie na mieście', 'Kosmetyki i chemia domowa',
@@ -27,7 +32,8 @@ const KOLORY_GRUP = {
     Rozrywka: '#C2508A', Zdrowie: '#2A9D8F', Zakupy: '#A0643C', Inne: '#7D8784'
 };
 
-// Przypisanie kategorii aplikacji do grup kolorów ze specyfikacji
+// Przypisanie kategorii startowych do grup kolorów ze specyfikacji.
+// Używane też w „Strukturze wydatków” (Statystyki); nowe kategorie trafiają do grupy „Inne”.
 const GRUPA_KATEGORII = {
     'Czynsz': 'Mieszkanie', 'Wydatki na dom': 'Mieszkanie',
     'Internet': 'Rachunki', 'HBO Max/Apple': 'Rachunki', 'Rata Panda': 'Rachunki',
@@ -40,9 +46,19 @@ const GRUPA_KATEGORII = {
     'Poduszka finansowa': 'Inne', 'Akcje/Obligacje': 'Inne', 'Nieplanowane': 'Inne'
 };
 
-// Kategorie stałe (co miesiąc podobna kwota). Używane w kafelku
-// „Śr. wydatki / mies.” (podpis „w tym stałe”) i pomijane w „Trendzie kategorii” (pkt 9).
+// Kategorie stałe na start (pole is_fixed w tabeli categories)
 const KATEGORIE_STALE = ['Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda', 'Ubezpieczenie auta'];
 
-// Docelowa stopa oszczędności w % (pkt 9.1); użytkownik zmienia ją na ekranie Statystyki
+// Docelowa stopa oszczędności w % (pkt 9.1); użytkownik zmienia ją w Ustawieniach
 const DOCELOWA_STOPA_DOMYSLNA = 15;
+
+// Kategorie startowe jako wiersze tabeli categories
+function kategorieDomyslne() {
+    return KATEGORIE_DOMYSLNE.map((name, i) => ({
+        name,
+        color: KOLORY_GRUP[GRUPA_KATEGORII[name]] || KOLORY_GRUP.Inne,
+        monthly_limit_gr: null,
+        is_fixed: KATEGORIE_STALE.includes(name),
+        sort_order: (i + 1) * 10
+    }));
+}

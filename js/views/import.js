@@ -1,139 +1,611 @@
 // =====================================================================
-// EKRAN: IMPORT CSV
+// EKRAN: IMPORT CSV (specyfikacja 5 i 7.2)
+// Etapy: start -> (mapowanie kolumn) -> podgląd -> wynik.
+// Plik jest czytany w całości w przeglądarce; do bazy trafiają tylko gotowe transakcje.
+// Część „czysta” (dekodowanie, wykrywanie kolumn, daty, kwoty, przygotowanie wierszy)
+// nie dotyka interfejsu ani bazy.
+// =====================================================================
+
+const KLUCZ_PROFILI_BANKU = 'budzet.profileBanku';
+
+const KOMUNIKAT_NIE_CSV = 'Ten plik nie wygląda na wyciąg CSV. Pobierz w Pekao24: Historia → Eksport → CSV.';
+
+// Pola, które mapujemy na kolumny pliku (ekran ręcznego wyboru kolumn)
+const POLA_IMPORTU = [
+    { pole: 'data', etykieta: 'Data księgowania', wymagane: true },
+    { pole: 'kwota', etykieta: 'Kwota operacji', wymagane: true },
+    { pole: 'kontrahent', etykieta: 'Nadawca / Odbiorca' },
+    { pole: 'tytul', etykieta: 'Tytuł' },
+    { pole: 'waluta', etykieta: 'Waluta' },
+    { pole: 'rachZrodlowy', etykieta: 'Rachunek źródłowy' },
+    { pole: 'rachDocelowy', etykieta: 'Rachunek docelowy' },
+    { pole: 'rachInny', etykieta: 'Rachunek kontrahenta (jedna kolumna)' }
+];
+
+// =====================================================================
+// CZĘŚĆ CZYSTA
+// =====================================================================
+
+// 5.2 Kodowanie: UTF-8, a gdy pojawi się „�” – Windows-1250. Bez BOM.
+function dekodujPlik(bufor) {
+    let tekst = new TextDecoder('utf-8').decode(bufor);
+    if (tekst.includes('�')) tekst = new TextDecoder('windows-1250').decode(bufor);
+    return tekst.replace(/^﻿/, '');
+}
+
+// 5.2 Wiersz nagłówka: pierwszy wiersz, w którym któraś komórka zawiera „Data”.
+// Wymagamy co najmniej 3 wypełnionych komórek, żeby nie wziąć za nagłówek
+// linii opisu nad tabelą (np. „Data wygenerowania: …”).
+function znajdzWierszNaglowka(wiersze) {
+    const limit = Math.min(wiersze.length, 40);
+    for (let i = 0; i < limit; i++) {
+        const wypelnione = wiersze[i].filter(k => String(k || '').trim()).length;
+        if (wypelnione >= 3 && wiersze[i].some(k => normalizuj(k).includes('DATA'))) return i;
+    }
+    return -1;
+}
+
+// Indeks pierwszego nagłówka spełniającego warunek (-1 = brak)
+function indeksNaglowka(naglowki, warunek) {
+    return naglowki.findIndex(n => warunek(normalizuj(n).replace(/\s+/g, ' ').trim()));
+}
+
+// 5.2 Mapowanie kolumn po słowach w nagłówkach. Zwraca { pole: indeks | -1 }.
+function wykryjKolumny(naglowki) {
+    const ma = (...slowa) => n => slowa.some(s => n.includes(s));
+    const bez = (...slowa) => n => !slowa.some(s => n.includes(s));
+    const i = warunek => indeksNaglowka(naglowki, warunek);
+    const pierwszy = (...indeksy) => indeksy.find(x => x >= 0) ?? -1;
+
+    return {
+        data: pierwszy(
+            i(ma('DATA KSIEGOWANIA')),
+            i(ma('DATA OPERACJI')),
+            i(ma('DATA TRANSAKCJI')),
+            i(n => n.includes('DATA') && bez('WALUTY')(n))
+        ),
+        kwota: pierwszy(
+            i(ma('KWOTA OPERACJI')),
+            i(n => n.includes('KWOTA') && bez('SALDO', 'WALUCIE RACHUNKU')(n)),
+            i(ma('KWOTA'))
+        ),
+        kontrahent: pierwszy(
+            i(n => ma('NADAWCA', 'ODBIORCA', 'KONTRAHENT')(n) && bez('ADRES', 'RACHUN', 'KONTO', 'NUMER')(n))
+        ),
+        tytul: pierwszy(i(ma('TYTUL')), i(ma('OPIS'))),
+        waluta: i(n => n.startsWith('WALUTA')),
+        rachZrodlowy: pierwszy(i(ma('RACHUNEK ZRODLOWY')), i(n => n.includes('RACHUN') && n.includes('NADAWC'))),
+        rachDocelowy: pierwszy(i(ma('RACHUNEK DOCELOWY')), i(n => n.includes('RACHUN') && n.includes('ODBIORC'))),
+        rachInny: pierwszy(i(ma('RACHUNEK PRZECIWSTAWNY')), i(ma('NUMER RACHUNKU')), i(ma('RACHUNEK KONTRAHENTA')))
+    };
+}
+
+// Brakujące pola wymagane: data, kwota i (tytuł lub kontrahent)
+function brakujacePola(mapa) {
+    const braki = [];
+    if (!(mapa.data >= 0)) braki.push('data');
+    if (!(mapa.kwota >= 0)) braki.push('kwota');
+    if (!(mapa.tytul >= 0) && !(mapa.kontrahent >= 0)) braki.push('tytuł lub kontrahent');
+    return braki;
+}
+
+// 5.2 Data: DD.MM.RRRR, DD-MM-RRRR, DD/MM/RRRR, RRRR-MM-DD (ew. z godziną) -> 'RRRR-MM-DD' | null
+function parsujDate(tekst) {
+    const s = String(tekst || '').trim().split(/[\sT]/)[0];
+    let r, m, d;
+    let x = s.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})$/);
+    if (x) [, d, m, r] = x;
+    else if ((x = s.match(/^(\d{4})[-.](\d{1,2})[-.](\d{1,2})$/))) [, r, m, d] = x;
+    else return null;
+    const data = new Date(Date.UTC(+r, +m - 1, +d));
+    if (data.getUTCFullYear() !== +r || data.getUTCMonth() !== +m - 1 || data.getUTCDate() !== +d) return null;
+    return `${r}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// 5.2 Kwota: bez spacji (też twardych), bez „PLN”, przecinek -> kropka, × 100.
+// „-1 234,56” -> -123456. Błędna -> null.
+function parsujKwote(tekst) {
+    let s = String(tekst || '')
+        .replace(/[\s  ]/g, '')
+        .replace(/PLN/i, '')
+        .replace(/−/g, '-'); // typograficzny minus
+    if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, ''); // „1.234,56”
+    s = s.replace(',', '.');
+    if (!/^[+-]?\d+(\.\d+)?$/.test(s)) return null;
+    return Math.round(parseFloat(s) * 100);
+}
+
+// Klucz duplikatu w formacie już zapisanym w bazie (zgodność z wcześniejszymi importami):
+// data-kwota-tytuł bez spacji (40 znaków); kolejne identyczne wiersze pliku: |2, |3 (4.5)
+function kluczDuplikatuBazowy(booked_on, amount_gr, tytul, kontrahent) {
+    const tekst = String(tytul || kontrahent || '').replace(/\s+/g, '').substring(0, 40);
+    return `${booked_on}-${amount_gr}-${tekst}`;
+}
+
+// Rachunek drugiej strony: wypływ -> docelowy, wpływ -> źródłowy
+// (wypłata ze wspólnego subkonta niesie wtedy jego numer)
+function rachunekKontrahenta(komorka, amount_gr) {
+    const zrodlowy = komorka('rachZrodlowy');
+    const docelowy = komorka('rachDocelowy');
+    const inny = komorka('rachInny');
+    const surowy = amount_gr > 0 ? (zrodlowy || inny || docelowy) : (docelowy || inny || zrodlowy);
+    return czystyNumer(surowy);
+}
+
+/**
+ * Wiersze danych -> wiersze podglądu.
+ * status: 'nowa' | 'duplikat' | 'blad' (z polem powod)
+ */
+function przygotujWiersze(daneWiersze, mapa, istniejaceKlucze) {
+    const wystapienia = {};
+    const wynik = [];
+
+    daneWiersze.forEach((wiersz, nr) => {
+        if (wiersz.every(k => !String(k || '').trim())) return; // pusty wiersz
+        const komorka = pole => (mapa[pole] >= 0 ? String(wiersz[mapa[pole]] ?? '').trim() : '');
+
+        const surowaData = komorka('data');
+        const surowaKwota = komorka('kwota');
+        const counterparty = komorka('kontrahent');
+        const title = komorka('tytul');
+        const waluta = komorka('waluta');
+
+        const booked_on = parsujDate(surowaData);
+        const amount_gr = parsujKwote(surowaKwota);
+
+        let powod = '';
+        if (!booked_on) powod = surowaData ? `Niepoprawna data „${surowaData}”` : 'Brak daty';
+        else if (amount_gr === null) powod = surowaKwota ? `Niepoprawna kwota „${surowaKwota}”` : 'Brak kwoty';
+        else if (amount_gr === 0) powod = 'Kwota 0 zł';
+        else if (waluta && normalizuj(waluta) !== 'PLN') powod = `Inna waluta (${waluta})`;
+
+        const t = { nr: nr + 1, booked_on, counterparty, title, amount_gr, surowaData, surowaKwota };
+        if (powod) {
+            wynik.push({ ...t, status: 'blad', powod });
+            return;
+        }
+
+        const bazowy = kluczDuplikatuBazowy(booked_on, amount_gr, title, counterparty);
+        wystapienia[bazowy] = (wystapienia[bazowy] || 0) + 1;
+        const n = wystapienia[bazowy];
+        const dedup_key = n === 1 ? bazowy : `${bazowy}|${n}`;
+
+        wynik.push({
+            ...t,
+            account_number: rachunekKontrahenta(komorka, amount_gr),
+            dedup_key,
+            status: istniejaceKlucze.has(dedup_key) ? 'duplikat' : 'nowa'
+        });
+    });
+    return wynik;
+}
+
+// Najnowszy miesiąc ('RRRR-MM') wśród poprawnych wierszy
+function najnowszyMiesiac(wiersze) {
+    return wiersze.reduce((m, w) => (w.booked_on && w.booked_on.slice(0, 7) > m ? w.booked_on.slice(0, 7) : m), '');
+}
+
+// Podpis profilu banku = znormalizowane nagłówki (ten sam układ pliku -> ten sam profil)
+function podpisNaglowkow(naglowki) {
+    return naglowki.map(n => normalizuj(n).trim()).join('|');
+}
+
+// =====================================================================
+// STAN EKRANU
+// =====================================================================
+
+let imp = nowyStanImportu();
+
+function nowyStanImportu() {
+    return {
+        etap: 'start',        // 'start' | 'mapowanie' | 'podglad' | 'zapis' | 'wynik'
+        blad: '',             // komunikat na ekranie startowym
+        bladZapisu: '',       // komunikat w podglądzie
+        nazwaPliku: '',
+        wiersze: [],          // surowe wiersze z PapaParse (tablice komórek)
+        naglowekIdx: -1,      // -1 = plik bez wiersza nagłówka
+        naglowki: [],
+        mapa: {},
+        profil: '',           // 'auto' | 'zapisany' | 'reczny'
+        przygotowane: [],
+        wynik: null           // { dodane, doCelow, miesiac }
+    };
+}
+
+// ---- Profile banku (localStorage) -----------------------------------
+
+function wczytajProfile() {
+    try { return JSON.parse(localStorage.getItem(KLUCZ_PROFILI_BANKU)) || {}; } catch (e) { return {}; }
+}
+
+function zapiszProfil(podpis, mapa) {
+    try {
+        const profile = wczytajProfile();
+        profile[podpis] = { mapa, zapisano: new Date().toISOString() };
+        localStorage.setItem(KLUCZ_PROFILI_BANKU, JSON.stringify(profile));
+    } catch (e) {}
+}
+
+// =====================================================================
+// WCZYTANIE PLIKU
 // =====================================================================
 
 function obsluzPlikCSV(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    document.getElementById('import-nazwa-pliku').innerText = file.name;
-
-    Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        encoding: 'UTF-8',
-        complete: function(results) {
-            parsowanieWierszy(results.data);
-        }
-    });
+    wczytajPlik(e.target.files[0]);
+    e.target.value = ''; // ten sam plik można wybrać ponownie
 }
 
-function parsowanieWierszy(wiersze) {
-    przygotowaneTransakcjeCSV = [];
-    const istniejaceKlucze = new Set(stan.transakcje.map(t => t.dedup_key));
-    const wystapieniaKlucza = {}; // ile razy dany klucz pojawił się już w tym pliku
-
-    let noweLicznik = 0, duplikatyLicznik = 0;
-
-    wiersze.forEach(row => {
-        const dataRaw = row['Data księgowania'] || row['Data operacji'] || row['Data transaction'] || row['Data'];
-        const kontrahent = row['Nadawca / Odbiorca'] || row['Kontrahent'] || row['Odbiorca'] || '';
-        const tytul = row['Tytułem'] || row['Tytuł'] || row['Opis'] || '';
-        const kwotaRaw = row['Kwota operacji'] || row['Kwota'] || '0';
-
-        if (!dataRaw) return;
-
-        let booked_on = dataRaw.trim();
-        if (booked_on.includes('.')) {
-            const parts = booked_on.split('.');
-            if (parts.length === 3) booked_on = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-        }
-
-        const kwotaCzysta = kwotaRaw.replace(/\s/g, '').replace('PLN', '').replace(',', '.');
-        const amount_gr = Math.round(parseFloat(kwotaCzysta) * 100);
-        if (isNaN(amount_gr)) return;
-
-        // Rachunek drugiej strony zależy od kierunku przelewu:
-        // wypływ (kwota < 0) -> rachunek docelowy, wpływ (kwota > 0) -> rachunek źródłowy.
-        // Dzięki temu wypłata ze wspólnego subkonta niesie jego numer.
-        const rachDocelowy = row['Rachunek docelowy'] || '';
-        const rachZrodlowy = row['Rachunek źródłowy'] || '';
-        const rachInny = row['Rachunek przeciwstawny'] || row['Numer rachunku'] || '';
-        const surowyRachunek = amount_gr > 0
-            ? (rachZrodlowy || rachInny || rachDocelowy)
-            : (rachDocelowy || rachInny || rachZrodlowy);
-        const numerKonta = czystyNumer(surowyRachunek);
-
-        // Klucz bazowy w dotychczasowym formacie (zgodność z danymi już zapisanymi w bazie).
-        // Kolejne identyczne wiersze w pliku dostają dopisek |2, |3...
-        const tytulSkrocony = (tytul || kontrahent).replace(/\s+/g, '').substring(0, 40);
-        const kluczBazowy = `${booked_on}-${amount_gr}-${tytulSkrocony}`;
-        wystapieniaKlucza[kluczBazowy] = (wystapieniaKlucza[kluczBazowy] || 0) + 1;
-        const n = wystapieniaKlucza[kluczBazowy];
-        const dedup_key = n === 1 ? kluczBazowy : `${kluczBazowy}|${n}`;
-
-        const czyDuplikat = istniejaceKlucze.has(dedup_key);
-        if (czyDuplikat) duplikatyLicznik++;
-        else noweLicznik++;
-
-        przygotowaneTransakcjeCSV.push({
-            booked_on,
-            counterparty: kontrahent,
-            title: tytul,
-            account_number: numerKonta,
-            amount_gr,
-            dedup_key,
-            czyDuplikat
-        });
-    });
-
-    document.getElementById('import-krok-1').classList.add('hidden');
-    document.getElementById('import-krok-2').classList.remove('hidden');
-
-    document.getElementById('import-podgladz-kafelki').innerHTML = `
-        <div class="card !p-2"><span class="block font-bold kwota text-[var(--c-income)]">${noweLicznik}</span>Nowe</div>
-        <div class="card !p-2"><span class="block font-bold kwota text-[var(--muted)]">${duplikatyLicznik}</span>Duplikaty</div>
-        <div class="card !p-2"><span class="block font-bold kwota text-[var(--accent)]">${przygotowaneTransakcjeCSV.length}</span>Wszystkie</div>
-    `;
-
-    document.getElementById('import-lista-preview').innerHTML = przygotowaneTransakcjeCSV.map(t => `
-        <div class="card !p-2.5 flex justify-between items-center gap-2 text-xs ${t.czyDuplikat ? 'opacity-50' : ''}">
-            <div class="min-w-0">
-                <p class="font-semibold truncate">${esc(t.counterparty || t.title)}</p>
-                ${t.account_number ? `<span class="text-[10px] text-[var(--accent)] block font-mono truncate">Konto: ${esc(t.account_number)}</span>` : ''}
-                <span class="text-[10px] text-[var(--muted)]">${esc(t.booked_on)} ${t.czyDuplikat ? '(Już zapisana)' : ''}</span>
-            </div>
-            <span class="font-bold kwota whitespace-nowrap ${t.amount_gr < 0 ? 'text-[var(--c-spend)]' : 'text-[var(--c-income)]'}">${(t.amount_gr / 100).toFixed(2)} zł</span>
-        </div>
-    `).join('');
+function pokazBladImportu(tresc) {
+    imp = nowyStanImportu();
+    imp.blad = tresc;
+    odswiezImport();
 }
+
+async function wczytajPlik(plik) {
+    if (!plik) return;
+    const nazwa = plik.name || 'plik.csv';
+    const rozszerzenieOk = /\.(csv|txt)$/i.test(nazwa) || /csv|text\/plain/i.test(plik.type || '');
+    if (!rozszerzenieOk || plik.size === 0) return pokazBladImportu(KOMUNIKAT_NIE_CSV);
+
+    let tekst;
+    try {
+        tekst = dekodujPlik(await plik.arrayBuffer());
+    } catch (err) {
+        return pokazBladImportu(KOMUNIKAT_NIE_CSV);
+    }
+
+    const { data } = Papa.parse(tekst, { skipEmptyLines: 'greedy' });
+    const wiersze = (data || []).filter(w => Array.isArray(w));
+    const maksKolumn = wiersze.reduce((m, w) => Math.max(m, w.length), 0);
+    if (wiersze.length < 2 || maksKolumn < 3) return pokazBladImportu(KOMUNIKAT_NIE_CSV);
+
+    imp = nowyStanImportu();
+    imp.nazwaPliku = nazwa;
+    imp.wiersze = wiersze;
+    imp.naglowekIdx = znajdzWierszNaglowka(wiersze);
+
+    if (imp.naglowekIdx < 0) {
+        // Brak nagłówka z datą (5.4) -> ręczny wybór kolumn
+        imp.naglowki = Array.from({ length: maksKolumn }, (_, i) => `Kolumna ${i + 1}`);
+        imp.mapa = {};
+        imp.etap = 'mapowanie';
+        return odswiezImport();
+    }
+
+    imp.naglowki = wiersze[imp.naglowekIdx].map(n => String(n || '').trim());
+    const zapisany = wczytajProfile()[podpisNaglowkow(imp.naglowki)];
+    if (zapisany && brakujacePola(zapisany.mapa).length === 0) {
+        imp.mapa = zapisany.mapa;
+        imp.profil = 'zapisany';
+    } else {
+        imp.mapa = wykryjKolumny(imp.naglowki);
+        imp.profil = 'auto';
+    }
+
+    if (brakujacePola(imp.mapa).length > 0) {
+        imp.etap = 'mapowanie';
+        return odswiezImport();
+    }
+    przygotujPodglad();
+}
+
+function wierszeDanych() {
+    return imp.wiersze.slice(imp.naglowekIdx + 1);
+}
+
+function przygotujPodglad() {
+    const istniejace = new Set(stan.transakcje.map(t => t.dedup_key));
+    imp.przygotowane = przygotujWiersze(wierszeDanych(), imp.mapa, istniejace);
+    // Klasyfikacja nowych wierszy tymi samymi regułami co zapisane transakcje
+    imp.przygotowane.forEach(w => {
+        if (w.status === 'nowa') {
+            w.klas = klasyfikuj(w);
+            w.doPrzypisania = czyKlasyfikacjaDoPrzypisania(w.klas);
+        }
+    });
+    imp.bladZapisu = '';
+    imp.etap = 'podglad';
+    odswiezImport();
+}
+
+// ---- Ręczny wybór kolumn ---------------------------------------------
+
+function otworzMapowanie() {
+    imp.etap = 'mapowanie';
+    odswiezImport();
+}
+
+function zatwierdzMapowanie() {
+    const mapa = {};
+    POLA_IMPORTU.forEach(({ pole }) => {
+        const el = document.getElementById(`mapa-${pole}`);
+        mapa[pole] = el && el.value !== '' ? Number(el.value) : -1;
+    });
+    const braki = brakujacePola(mapa);
+    if (braki.length > 0) {
+        document.getElementById('mapa-blad').innerText = `Wybierz kolumny: ${braki.join(', ')}.`;
+        return;
+    }
+    imp.mapa = mapa;
+    imp.profil = 'reczny';
+    if (imp.naglowekIdx >= 0) zapiszProfil(podpisNaglowkow(imp.naglowki), mapa);
+    przygotujPodglad();
+}
+
+// ---- Zapis -----------------------------------------------------------
 
 async function zapiszZaimportowaneTransakcje() {
-    const doZapisu = przygotowaneTransakcjeCSV.filter(t => !t.czyDuplikat).map(t => ({
-        booked_on: t.booked_on,
-        counterparty: t.counterparty,
-        title: t.title,
-        account_number: t.account_number,
-        amount_gr: t.amount_gr,
-        dedup_key: t.dedup_key
+    const nowe = imp.przygotowane.filter(w => w.status === 'nowa');
+    if (nowe.length === 0 || imp.etap !== 'podglad') return;
+
+    imp.etap = 'zapis';
+    imp.bladZapisu = '';
+    odswiezImport();
+
+    const miesiac = najnowszyMiesiac(nowe);
+    const doCelow = nowe.filter(w => w.klas && w.klas.cel).length;
+
+    // Wpis w historii importów. Bez tabeli imports import działa dalej, tylko bez historii.
+    let importId = null;
+    const resImport = await supabaseClient.from('imports').insert([{
+        file_name: imp.nazwaPliku,
+        rows_total: imp.przygotowane.length,
+        rows_added: nowe.length,
+        rows_duplicate: imp.przygotowane.filter(w => w.status === 'duplikat').length,
+        rows_error: imp.przygotowane.filter(w => w.status === 'blad').length,
+        newest_month: miesiac
+    }]).select('id').single();
+    if (!resImport.error && resImport.data) importId = resImport.data.id;
+
+    const rekordy = nowe.map(w => ({
+        booked_on: w.booked_on,
+        counterparty: w.counterparty,
+        title: w.title,
+        account_number: w.account_number,
+        amount_gr: w.amount_gr,
+        dedup_key: w.dedup_key,
+        ...(importId ? { import_id: importId } : {})
     }));
 
-    if (doZapisu.length === 0) {
-        alert('Brak nowych transakcji do zapisania (wszystkie to duplikaty).');
+    // Jedno zapytanie = jedna transakcja w bazie: zapisują się wszystkie wiersze albo żaden (5.3)
+    const { error } = await supabaseClient.from('transakcje').insert(rekordy);
+    if (error) {
+        if (importId) await supabaseClient.from('imports').delete().eq('id', importId);
+        imp.etap = 'podglad';
+        imp.bladZapisu = komunikatBledu(error, 'Nie zapisano żadnej transakcji');
+        odswiezImport();
         return;
     }
 
-    const btn = document.getElementById('btn-zapisz-import');
-    btn.innerText = 'Zapisywanie w chmurze...';
-    btn.disabled = true;
-
-    const { error } = await supabaseClient.from('transakcje').insert(doZapisu);
-    btn.innerText = 'Zapisz nowe transakcje';
-    btn.disabled = false;
-
-    if (error) {
-        alert('Błąd podczas zapisywania: ' + error.message);
-    } else {
-        alert(`Pomyślnie zaimportowano ${doZapisu.length} nowych transakcji!`);
-        resetujImport();
-        pobierzDane();
-        zmienZakladke('pulpit');
-    }
+    imp.wynik = { dodane: nowe.length, doCelow, miesiac };
+    imp.etap = 'wynik';
+    await pobierzDane(); // odświeża też historię importów i ekran
+    pokazKomunikat(`Zapisano ${nowe.length} ${odmiana(nowe.length, 'transakcję', 'transakcje', 'transakcji')}, ${doCelow} trafiło do celów`);
 }
 
 function resetujImport() {
-    document.getElementById('import-krok-2').classList.add('hidden');
-    document.getElementById('import-krok-1').classList.remove('hidden');
-    document.getElementById('csv-file-input').value = '';
-    przygotowaneTransakcjeCSV = [];
+    imp = nowyStanImportu();
+    odswiezImport();
 }
+
+// Wejście na zakładkę po zakończonym imporcie zaczyna od nowa
+function przygotujEkranImportu() {
+    if (imp.etap === 'wynik') imp = nowyStanImportu();
+}
+
+function pokazMiesiacNaPulpicie(miesiac) {
+    stan.miesiacWybrany = miesiac;
+    if (stan.trybFiltraPulpit !== 'miesiac') zmienTrybFiltraPulpit('miesiac');
+    zmienZakladke('pulpit');
+}
+
+// =====================================================================
+// RYSOWANIE
+// =====================================================================
+
+function odswiezImport() {
+    const etap = imp.etap === 'zapis' ? 'podglad' : imp.etap;
+    const widoczne = {
+        'import-start': etap === 'start',
+        'import-mapowanie': etap === 'mapowanie',
+        'import-podglad': etap === 'podglad',
+        'import-wynik': etap === 'wynik',
+        'import-historia': etap === 'start' || etap === 'wynik'
+    };
+    Object.entries(widoczne).forEach(([id, pokaz]) => document.getElementById(id).classList.toggle('hidden', !pokaz));
+
+    const blad = document.getElementById('import-blad');
+    blad.innerText = imp.blad;
+    blad.classList.toggle('hidden', !imp.blad);
+
+    if (etap === 'mapowanie') rysujMapowanie();
+    if (etap === 'podglad') rysujPodglad();
+    if (etap === 'wynik') rysujWynik();
+    if (widoczne['import-historia']) rysujHistorieImportow();
+}
+
+function rysujMapowanie() {
+    const probki = wierszeDanych().filter(w => w.some(k => String(k || '').trim())).slice(0, 3);
+    const opcje = wybrany => `<option value="">— brak —</option>` + imp.naglowki.map((n, i) =>
+        `<option value="${i}" ${wybrany === i ? 'selected' : ''}>${esc(n || `Kolumna ${i + 1}`)}</option>`).join('');
+
+    document.getElementById('import-mapowanie').innerHTML = `
+        <div>
+            <h2 class="font-semibold text-sm">Wybierz kolumny: <span class="text-[var(--accent)]">${esc(imp.nazwaPliku)}</span></h2>
+            <p class="text-xs text-[var(--muted)] mt-1">${imp.naglowekIdx < 0
+                ? 'Nie znaleziono wiersza nagłówka z datą. Wskaż, w której kolumnie są dane.'
+                : 'Nie udało się rozpoznać wszystkich kolumn. Wybór zapamiętamy jako profil banku dla plików o tym układzie.'}</p>
+        </div>
+        <div class="grid gap-2 min-[900px]:grid-cols-2 text-xs">
+            ${POLA_IMPORTU.map(({ pole, etykieta, wymagane }) => `
+                <div>
+                    <label for="mapa-${pole}" class="field-label">${esc(etykieta)}${wymagane ? ' *' : ''}</label>
+                    <select id="mapa-${pole}" class="input">${opcje(imp.mapa[pole] >= 0 ? imp.mapa[pole] : null)}</select>
+                </div>`).join('')}
+        </div>
+        <p class="text-[10px] text-[var(--muted)]">* wymagane; potrzebny jest też tytuł lub kontrahent. Rachunki pozwalają rozpoznać wpłaty na cele.</p>
+        <div>
+            <h3 class="text-xs font-semibold mb-1">Podgląd pierwszych wierszy</h3>
+            <div class="overflow-x-auto">
+                <table class="text-[11px] whitespace-nowrap">
+                    <thead class="text-[var(--muted)]"><tr>${imp.naglowki.map(n => `<th class="text-left font-semibold pr-3 pb-1">${esc(n)}</th>`).join('')}</tr></thead>
+                    <tbody>${probki.map(w => `<tr class="border-t border-[var(--border)]">${imp.naglowki.map((_, i) =>
+                        `<td class="pr-3 py-1 max-w-[12rem] truncate">${esc(w[i] ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
+                </table>
+            </div>
+        </div>
+        <p id="mapa-blad" role="alert" class="text-xs text-[var(--c-spend)]"></p>
+        <div class="flex items-center gap-4">
+            <button type="button" onclick="zatwierdzMapowanie()" class="btn-primary !w-auto px-6">Dalej</button>
+            <button type="button" onclick="resetujImport()" class="text-xs text-[var(--muted)] underline">Anuluj</button>
+        </div>`;
+}
+
+// Opis wiersza w podglądzie: przychód, cel, kategoria z reguły albo „do przypisania”
+function opisWierszaImportu(w) {
+    if (w.status === 'duplikat') return { tekst: 'już zapisana, pominięta', klasa: 'text-[var(--muted)]' };
+    if (w.status === 'blad') return { tekst: w.powod, klasa: 'text-[var(--c-spend)]' };
+    const k = w.klas;
+    if (k.typ === 'przychod') return { tekst: 'przychód', klasa: 'text-[var(--c-income)]' };
+    if (k.typ === 'wplata') return { tekst: `cel: ${k.cel.name}`, klasa: 'text-[var(--c-save)]' };
+    if (k.typ === 'wyplata') return k.cel
+        ? { tekst: `wypłata z celu: ${k.cel.name}`, klasa: 'text-[var(--c-save)]' }
+        : { tekst: 'wypłata z celu – do przypisania', klasa: 'text-amber-600' };
+    if (k.kategoria) return { tekst: k.kategoria, klasa: 'text-[var(--fg)]' };
+    return { tekst: 'do przypisania', klasa: 'text-amber-600' };
+}
+
+const OPISY_PROFILU = {
+    auto: 'Rozpoznano kolumny automatycznie (układ Pekao24)',
+    zapisany: 'Użyto zapisanego profilu banku',
+    reczny: 'Kolumny wybrane ręcznie – zapisano jako profil banku'
+};
+
+function rysujPodglad() {
+    const p = imp.przygotowane;
+    const nowe = p.filter(w => w.status === 'nowa');
+    const duplikaty = p.filter(w => w.status === 'duplikat').length;
+    const bledne = p.filter(w => w.status === 'blad').length;
+    const doCelow = nowe.filter(w => w.klas.cel).length;
+    const bezKategorii = nowe.filter(w => w.doPrzypisania).length;
+    const zapisywanie = imp.etap === 'zapis';
+
+    let info = '';
+    if (nowe.length === 0 && duplikaty > 0 && bledne === 0) info = 'Wszystkie transakcje z tego pliku są już zapisane.';
+    else if (nowe.length === 0) info = 'W pliku nie ma nowych, poprawnych transakcji.';
+
+    const kafelek = (liczba, podpis, klasa) =>
+        `<div class="card !p-2"><span class="block font-bold text-base kwota ${klasa}">${liczba}</span>${podpis}</div>`;
+
+    const lista = p.map(w => {
+        const opis = opisWierszaImportu(w);
+        const wyszarzony = w.status !== 'nowa';
+        const kwota = w.amount_gr != null && w.status !== 'blad'
+            ? zlZeZnakiem(w.amount_gr)
+            : esc(w.surowaKwota || '—');
+        return `
+        <div class="card !p-2.5 flex justify-between items-center gap-2 text-xs ${wyszarzony ? 'opacity-55' : ''}">
+            <div class="min-w-0">
+                <p class="font-semibold truncate">${esc(w.counterparty || w.title || `Wiersz ${w.nr}`)}</p>
+                <span class="text-[10px] text-[var(--muted)]">${esc(w.booked_on || w.surowaData || '')} · </span><span class="text-[10px] ${opis.klasa}">${esc(opis.tekst)}</span>
+            </div>
+            <span class="font-bold kwota whitespace-nowrap ${w.amount_gr < 0 ? 'text-[var(--c-spend)]' : 'text-[var(--c-income)]'}">${kwota}</span>
+        </div>`;
+    }).join('');
+
+    document.getElementById('import-podglad').innerHTML = `
+        <div class="flex justify-between items-start gap-3">
+            <div class="min-w-0">
+                <h2 class="font-semibold text-sm truncate">Podgląd: <span class="text-[var(--accent)]">${esc(imp.nazwaPliku)}</span></h2>
+                <p class="text-[11px] text-[var(--muted)]">${esc(OPISY_PROFILU[imp.profil] || '')} ·
+                    <button type="button" onclick="otworzMapowanie()" class="underline">zmień kolumny</button></p>
+            </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 text-center text-xs min-[900px]:max-w-xl">
+            ${kafelek(nowe.length, 'nowe', 'text-[var(--c-income)]')}
+            ${kafelek(doCelow, 'do celów', 'text-[var(--c-save)]')}
+            ${kafelek(bezKategorii, 'bez kategorii', bezKategorii ? 'text-amber-600' : 'text-[var(--muted)]')}
+        </div>
+        <p class="text-[11px] text-[var(--muted)]">Wierszy w pliku: ${p.length} · już zapisane: ${duplikaty} · błędne: ${bledne}${bledne ? ' (nie zostaną zapisane)' : ''}</p>
+        ${info ? `<p class="card !p-3 text-xs font-semibold" role="status">${esc(info)}</p>` : ''}
+        <div class="card-grid scroll-box text-xs pr-1">${lista}</div>
+        ${imp.bladZapisu ? `<p role="alert" class="text-xs text-[var(--c-spend)] card !p-3 border border-current">${esc(imp.bladZapisu)}</p>` : ''}
+        <div class="flex items-center gap-4 flex-wrap">
+            <button type="button" id="btn-zapisz-import" onclick="zapiszZaimportowaneTransakcje()" class="btn-primary min-[900px]:max-w-sm"
+                ${nowe.length === 0 || zapisywanie ? 'disabled' : ''}>
+                ${zapisywanie ? 'Zapisywanie…' : `Zapisz ${nowe.length} ${odmiana(nowe.length, 'transakcję', 'transakcje', 'transakcji')}`}
+            </button>
+            <button type="button" onclick="resetujImport()" class="text-xs text-[var(--muted)] underline" ${zapisywanie ? 'disabled' : ''}>Anuluj</button>
+        </div>`;
+}
+
+function rysujWynik() {
+    const w = imp.wynik;
+    const nazwa = w.miesiac ? nazwaMiesiaca(w.miesiac).toLowerCase() : '';
+    const nazwaKrotka = w.miesiac ? MIESIACE_PELNE[Number(w.miesiac.slice(5, 7)) - 1].toLowerCase() : '';
+    document.getElementById('import-wynik').innerHTML = `
+        <div class="card space-y-3 text-center py-6">
+            <div class="w-12 h-12 rounded-full mx-auto flex items-center justify-center bg-[var(--accent)] text-[var(--on-accent)] text-xl" aria-hidden="true">✓</div>
+            <h2 class="font-bold">Wyciąg za ${esc(nazwa)} zapisany</h2>
+            <p class="text-xs text-[var(--muted)]">Dodano ${w.dodane} ${odmiana(w.dodane, 'transakcję', 'transakcje', 'transakcji')}, ${w.doCelow} trafiło do celów.</p>
+            <div class="flex flex-col min-[480px]:flex-row gap-2 justify-center pt-1">
+                <button type="button" onclick="pokazMiesiacNaPulpicie('${esc(w.miesiac)}')" class="btn-primary min-[480px]:!w-auto px-5">Pokaż ${esc(nazwaKrotka)} na pulpicie</button>
+                <button type="button" onclick="zmienZakladke('cele')" class="btn-secondary">Zobacz cele</button>
+            </div>
+            <button type="button" onclick="resetujImport()" class="text-xs text-[var(--muted)] underline">Importuj kolejny plik</button>
+        </div>`;
+}
+
+function rysujHistorieImportow() {
+    const kontener = document.getElementById('import-historia');
+    if (!stan.importy || stan.importy.length === 0) {
+        kontener.innerHTML = stan.importy === null
+            ? `<p class="text-[10px] text-[var(--muted)]">Historia importów pojawi się po uruchomieniu w Supabase skryptu ${esc(PLIK_MIGRACJI)}.</p>`
+            : '';
+        return;
+    }
+    const data = iso => {
+        const d = new Date(iso);
+        return isNaN(d) ? '' : `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    };
+    kontener.innerHTML = `
+        <article class="card space-y-2">
+            <h2 class="font-semibold text-sm">Ostatnie importy</h2>
+            <ul class="text-xs divide-y divide-[var(--border)]">
+                ${stan.importy.slice(0, 5).map(i => `
+                    <li class="py-1.5 flex justify-between gap-3">
+                        <span class="min-w-0">
+                            <span class="block font-semibold truncate">${esc(i.file_name || 'plik CSV')}</span>
+                            <span class="text-[10px] text-[var(--muted)]">${esc(data(i.imported_at))}${i.newest_month ? ` · ${esc(nazwaMiesiaca(i.newest_month))}` : ''}</span>
+                        </span>
+                        <span class="text-right text-[10px] text-[var(--muted)] whitespace-nowrap kwota">
+                            <span class="block text-[var(--c-income)] font-semibold">+${i.rows_added ?? 0} nowych</span>
+                            ${i.rows_duplicate ?? 0} dupl.${i.rows_error ? ` · ${i.rows_error} błędnych` : ''}
+                        </span>
+                    </li>`).join('')}
+            </ul>
+        </article>`;
+}
+
+// ---- Przeciągnięcie pliku (komputer) ---------------------------------
+
+(function obslugaPrzeciagania() {
+    const strefa = () => document.getElementById('import-strefa');
+    ['dragover', 'drop'].forEach(typ => window.addEventListener(typ, e => e.preventDefault())); // przeglądarka nie otwiera pliku
+    document.addEventListener('dragover', e => {
+        const s = strefa();
+        if (s && s.contains(e.target)) s.classList.add('!border-[var(--accent)]');
+    });
+    document.addEventListener('dragleave', e => {
+        const s = strefa();
+        if (s && !s.contains(e.relatedTarget)) s.classList.remove('!border-[var(--accent)]');
+    });
+    document.addEventListener('drop', e => {
+        const s = strefa();
+        if (!s) return;
+        s.classList.remove('!border-[var(--accent)]');
+        if (stan.zakladka === 'import' && e.dataTransfer && e.dataTransfer.files.length) {
+            wczytajPlik(e.dataTransfer.files[0]);
+        }
+    });
+})();

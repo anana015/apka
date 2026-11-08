@@ -27,6 +27,49 @@ async function pobierzWszystkie(tabela, kolumnaSortowania = null, rosnaco = true
     return { data: wynik, error: null };
 }
 
+// Brak tabeli lub kolumny w bazie (migracja nieuruchomiona)
+function czyBrakSchematu(error) {
+    if (!error) return false;
+    const kod = String(error.code || '');
+    return kod === '42P01' || kod === '42703' || kod === 'PGRST204' || kod === 'PGRST205' ||
+        /schema cache|does not exist|could not find/i.test(error.message || '');
+}
+
+// Czytelny komunikat błędu zapisu; przy braku tabeli/kolumny – wskazówka z migracją
+function komunikatBledu(error, poczatek = 'Błąd zapisu') {
+    if (czyBrakSchematu(error)) return `${poczatek}: w bazie brakuje tabeli lub kolumny. Uruchom w Supabase skrypt ${PLIK_MIGRACJI}.`;
+    return `${poczatek}: ${error && error.message ? error.message : 'nieznany błąd'}`;
+}
+
+// Kategorie z tabeli categories. Pusta tabela -> zapis kategorii startowych.
+// Brak tabeli -> lista z config.js (aplikacja działa, edycja kategorii niedostępna).
+async function pobierzKategorie() {
+    let res = await pobierzWszystkie('categories', 'sort_order');
+    if (res.error) {
+        stan.kategorieZBazy = false;
+        stan.kategorie = kategorieDomyslne();
+        return;
+    }
+    if (res.data.length === 0) {
+        const { error } = await supabaseClient
+            .from('categories')
+            .upsert(kategorieDomyslne(), { onConflict: 'name', ignoreDuplicates: true });
+        if (!error) res = await pobierzWszystkie('categories', 'sort_order');
+    }
+    stan.kategorieZBazy = true;
+    stan.kategorie = res.data && res.data.length ? res.data : kategorieDomyslne();
+}
+
+// Historia importów, najnowsze pierwsze (null = brak tabeli imports)
+async function pobierzImporty() {
+    const { data, error } = await supabaseClient
+        .from('imports')
+        .select('*')
+        .order('imported_at', { ascending: false })
+        .limit(10);
+    stan.importy = error ? null : (data || []);
+}
+
 async function pobierzDane() {
     document.getElementById('status-polaczenia').innerText = 'Pobieranie...';
 
@@ -37,13 +80,18 @@ async function pobierzDane() {
     }
     stan.transakcje = resTrans.data || [];
 
-    const resRules = await pobierzWszystkie('rules');
+    // Pozostałe tabele są niezależne – pobieramy je równolegle
+    const [resRules, resGoals] = await Promise.all([
+        pobierzWszystkie('rules'),
+        pobierzWszystkie('goals'),
+        pobierzKategorie(),
+        pobierzImporty()
+    ]);
+
     // Najnowsza reguła pierwsza: przy kilku trafieniach wygrywa ta dodana najpóźniej
     dynamiczneReguly = (resRules.data || []).slice().sort((a, b) =>
         String(b.created_at || '').localeCompare(String(a.created_at || ''))
     );
-
-    const resGoals = await pobierzWszystkie('goals');
     stan.cele = resGoals.data || [];
 
     document.getElementById('status-polaczenia').innerText = 'Połączono (Wspólny budżet)';

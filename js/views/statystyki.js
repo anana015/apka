@@ -75,6 +75,11 @@ function kafelek(tytul, wartosc, podpis, klasaKoloru = '') {
         </div>`;
 }
 
+// Wydatki w kategoriach oznaczonych jako stałe (pole is_fixed) w jednym wierszu miesięcznym
+function wydatkiStale(wiersz) {
+    return Object.entries(wiersz.kategorie).reduce((s, [kat, kwota]) => s + (czyKategoriaStala(kat) ? kwota : 0), 0);
+}
+
 function rysujKafelki(d, cel) {
     const w = d.wiersze;
     const n = w.length;
@@ -84,8 +89,7 @@ function rysujKafelki(d, cel) {
 
     const stopa = przychody > 0 ? (netto / przychody) * 100 : 0;
 
-    const stale = w.reduce((s, r) =>
-        s + KATEGORIE_STALE.reduce((a, k) => a + (r.kategorie[k] || 0), 0), 0) / n;
+    const stale = w.reduce((s, r) => s + wydatkiStale(r), 0) / n;
 
     const najdrozszy = w.reduce((a, r) => (r.wydatki > a.wydatki ? r : a), w[0]);
 
@@ -205,11 +209,12 @@ function rysujStruktureWydatkow(d) {
 
 let ostatnieDaneTrendu = null;
 
+// Kategorie zmienne (bez stałych i nieprzypisanych), od największej sumy
 function kategorieTrendu(w) {
     const sumy = {};
     for (const r of w) {
         for (const [kat, kwota] of Object.entries(r.kategorie)) {
-            if (KATEGORIE_STALE.includes(kat) || kat === 'Nieprzypisane') continue;
+            if (czyKategoriaStala(kat) || kat === 'Nieprzypisane') continue;
             sumy[kat] = (sumy[kat] || 0) + kwota;
         }
     }
@@ -223,6 +228,7 @@ function rysujTrendKategorii(d) {
 
     if (kategorie.length === 0) {
         przyciski.innerHTML = '';
+        przyciski.dataset.klucz = '';
         document.getElementById('stat-trend-wykres').innerHTML =
             '<p class="text-xs text-[var(--muted)]">Brak skategoryzowanych wydatków zmiennych.</p>';
         return;
@@ -327,7 +333,7 @@ function rysujOdchylenia(d) {
             </thead>
             <tbody>${wiersze.map(r => {
                 const kolor = r.odch > 10 ? 'text-[var(--c-spend)]' : r.odch < -10 ? 'text-[var(--c-income)]' : 'text-[var(--muted)]';
-                const strzalka = r.odch > 0 ? '↑' : r.odch < 0 ? '↓' : '';
+                const strzalka = r.odch > 0 ? '▲' : r.odch < 0 ? '▼' : '';
                 return `
                 <tr class="border-t border-[var(--border)]">
                     <td class="py-1.5 pr-1">${esc(r.kat)}</td>

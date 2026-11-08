@@ -129,7 +129,20 @@
                     </div>
                 </div>
 
-                <div class="card span-all space-y-3 pulpit-tresc">
+                <!-- 6 #8: Cele oszczędnościowe – klik przenosi do zakładki Cele -->
+                <article id="pulpit-cele" class="card space-y-2 pulpit-tresc cursor-pointer hover:ring-1 hover:ring-[var(--border)] transition"
+                    role="link" tabindex="0" onclick="zmienZakladke('cele')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); zmienZakladke('cele'); }">
+                    <div class="flex justify-between items-baseline gap-2">
+                        <h2 class="font-semibold text-sm">Cele oszczędnościowe</h2>
+                        <span class="text-xs font-semibold text-[var(--accent)]">Szczegóły ›</span>
+                    </div>
+                    <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-cele-suma">0 zł</p>
+                    <div id="pulpit-cele-pasek" class="flex h-2.5 w-full rounded-full overflow-hidden bg-[var(--bg)]" aria-hidden="true"></div>
+                    <div id="pulpit-cele-legenda" class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--muted)]"></div>
+                    <p id="pulpit-cele-podpis" class="text-[11px] text-[var(--muted)]"></p>
+                </article>
+
+                <div class="card space-y-3 pulpit-tresc">
                     <h2 class="font-semibold text-sm">Wydatki według kategorii</h2>
                     <div id="pulpit-kategorie-lista" class="split-list text-sm"></div>
                 </div>
@@ -156,24 +169,24 @@
                 <div id="lista-transakcji" class="span-all space-y-2"></div>
             </section>
 
-            <!-- 3. IMPORT CSV -->
+            <!-- 3. IMPORT CSV (specyfikacja 5 i 7.2) – treść etapów rysuje import.js -->
             <section id="tab-import" class="hidden view">
-                <button type="button" id="import-krok-1" class="span-all card border-2 border-dashed border-[var(--border)] p-10 text-center hover:border-[var(--accent)] transition" onclick="document.getElementById('csv-file-input').click()">
-                    <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto text-[var(--muted)] mb-2"></i>
-                    <span class="block text-sm font-semibold mb-1">Wybierz plik CSV z banku Pekao SA</span>
-                    <span class="block text-xs text-[var(--muted)]">Pekao24: Historia → Eksport → plik CSV</span>
-                </button>
-                <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="obsluzPlikCSV(event)" aria-label="Plik CSV z wyciągiem">
-
-                <div id="import-krok-2" class="hidden span-all space-y-3">
-                    <div class="flex justify-between items-center">
-                        <h2 class="font-semibold text-sm">Podgląd pliku: <span id="import-nazwa-pliku" class="text-[var(--accent)]"></span></h2>
-                        <button type="button" onclick="resetujImport()" class="text-xs text-[var(--c-spend)] underline">Zmień plik</button>
-                    </div>
-                    <div id="import-podgladz-kafelki" class="grid grid-cols-3 gap-2 text-center text-xs min-[900px]:max-w-xl"></div>
-                    <div id="import-lista-preview" class="card-grid scroll-box text-xs pr-1"></div>
-                    <button type="button" id="btn-zapisz-import" onclick="zapiszZaimportowaneTransakcje()" class="btn-primary min-[900px]:max-w-sm">Zapisz nowe transakcje</button>
+                <!-- Start: prostokąt z przerywaną ramką; na komputerze działa też przeciągnięcie pliku -->
+                <div id="import-start" class="span-all space-y-3">
+                    <button type="button" id="import-strefa" class="w-full card border-2 border-dashed border-[var(--border)] p-10 text-center hover:border-[var(--accent)] transition" onclick="document.getElementById('csv-file-input').click()">
+                        <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto text-[var(--muted)] mb-2"></i>
+                        <span class="block text-sm font-semibold mb-1">Wybierz plik CSV z banku</span>
+                        <span class="block text-xs text-[var(--muted)]">W bankowości internetowej: Historia → Eksport → CSV</span>
+                        <span class="hidden min-[900px]:block text-[11px] text-[var(--muted)] mt-2">albo przeciągnij plik tutaj</span>
+                    </button>
+                    <p id="import-blad" role="alert" class="hidden card !p-3 text-xs text-[var(--c-spend)] border border-current"></p>
                 </div>
+                <input type="file" id="csv-file-input" accept=".csv,text/csv" class="hidden" onchange="obsluzPlikCSV(event)" aria-label="Plik CSV z wyciągiem">
+
+                <div id="import-mapowanie" class="hidden span-all card space-y-3"></div>
+                <div id="import-podglad" class="hidden span-all space-y-3"></div>
+                <div id="import-wynik" class="hidden span-all"></div>
+                <div id="import-historia" class="span-all"></div>
             </section>
 
             <!-- 4. CELE -->
@@ -185,7 +198,7 @@
                         <p class="tile-value kwota" id="cele-suma-ogolna">0 zł</p>
                         <span class="tile-note" id="cele-suma-cel"></span>
                     </div>
-                    <button type="button" onclick="otworzFormularzCelu()" class="chip is-active">+ Nowy cel</button>
+                    <button type="button" onclick="otworzFormularzCelu()" class="chip is-active">+ Dodaj nowy cel</button>
                 </div>
                 <div class="card cele-lista">
                     <span class="tile-label" id="cele-wplacone-etykieta">Wpłacone w tym miesiącu</span>
@@ -193,35 +206,64 @@
                     <span class="tile-note" id="cele-wplacone-proc"></span>
                 </div>
 
-                <!-- Formularz dodawania / edycji celu -->
+                <!-- 8.4 Formularz dodawania / edycji celu -->
                 <div id="modal-cel" class="hidden card span-all space-y-3 border border-[var(--border)]">
                     <h2 class="font-semibold text-sm" id="modal-tytul">Dodaj nowy cel oszczędnościowy</h2>
-                    <form onsubmit="zapiszCel(event)" class="grid gap-3 min-[900px]:grid-cols-2 text-xs">
+                    <form onsubmit="zapiszCel(event)" class="grid gap-3 min-[900px]:grid-cols-2 text-xs" novalidate>
                         <input type="hidden" id="cel-id">
                         <div class="min-[900px]:col-span-2">
                             <label for="cel-nazwa" class="field-label">Nazwa celu</label>
-                            <input type="text" id="cel-nazwa" required placeholder="np. Skarbonka na wakacje" class="input">
+                            <input type="text" id="cel-nazwa" required maxlength="40" placeholder="np. Wakacje 2027" class="input">
                         </div>
                         <div>
                             <label for="cel-kwota" class="field-label">Kwota docelowa (zł)</label>
-                            <input type="number" step="0.01" min="0" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input">
+                            <input type="text" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input kwota">
                         </div>
                         <div>
                             <label for="cel-termin" class="field-label">Termin</label>
-                            <input type="date" id="cel-termin" value="2026-12-31" required class="input">
+                            <input type="month" id="cel-termin" required class="input">
                         </div>
                         <div>
                             <label for="cel-keyword" class="field-label">Nr subkonta celu (wpłaty)</label>
-                            <input type="text" id="cel-keyword" required inputmode="numeric" placeholder="26 cyfr numeru subkonta tego celu" class="input" aria-describedby="cel-keyword-opis">
+                            <input type="text" id="cel-keyword" required inputmode="numeric" placeholder="26 cyfr numeru subkonta tego celu" class="input" aria-describedby="cel-keyword-opis" oninput="odswiezPodpowiedzSalda()">
                             <p id="cel-keyword-opis" class="text-[10px] text-[var(--muted)] mt-1">Przelew na ten numer = wpłata do celu.</p>
                         </div>
                         <div>
                             <label for="cel-keywords-out" class="field-label">Słowa kluczowe wypłat (po przecinku)</label>
-                            <input type="text" id="cel-keywords-out" placeholder="np. wakacje, bilety" class="input" aria-describedby="cel-keywords-out-opis">
+                            <input type="text" id="cel-keywords-out" placeholder="np. wakacje, bilety" class="input" aria-describedby="cel-keywords-out-opis" oninput="odswiezPodpowiedzSalda()">
                             <p id="cel-keywords-out-opis" class="text-[10px] text-[var(--muted)] mt-1">Wypłaty ze wspólnego subkonta wypłat trafią do tego celu, gdy tytuł zawiera jedno z tych słów.</p>
                         </div>
+
+                        <fieldset class="min-[900px]:col-span-2 space-y-2 border-t border-[var(--border)] pt-3">
+                            <legend class="sr-only">Obecne saldo subkonta</legend>
+                            <div class="grid gap-3 min-[900px]:grid-cols-2 items-start">
+                                <div>
+                                    <label for="cel-saldo" class="field-label">Obecne saldo subkonta (zł)</label>
+                                    <input type="text" inputmode="decimal" id="cel-saldo" value="0" class="input kwota" aria-describedby="cel-saldo-podpowiedz" oninput="odswiezPodpowiedzSalda()">
+                                </div>
+                                <div class="space-y-1.5 pt-1" role="radiogroup" aria-label="Czym jest podane saldo">
+                                    <label class="flex items-start gap-2 cursor-pointer">
+                                        <input type="radio" name="cel-saldo-typ" id="cel-saldo-poczatkowe" checked class="mt-0.5 accent-[var(--accent)]" onchange="odswiezPodpowiedzSalda()">
+                                        <span><span class="font-semibold">Saldo sprzed pierwszego importu</span><span class="block text-[10px] text-[var(--muted)]">Stan subkonta, zanim zaczyna się historia wyciągów w aplikacji</span></span>
+                                    </label>
+                                    <label class="flex items-start gap-2 cursor-pointer">
+                                        <input type="radio" name="cel-saldo-typ" id="cel-saldo-dzis" class="mt-0.5 accent-[var(--accent)]" onchange="odswiezPodpowiedzSalda()">
+                                        <span><span class="font-semibold">Dzisiejsze saldo w banku</span><span class="block text-[10px] text-[var(--muted)]">Aplikacja odejmie przelewy już zaimportowane</span></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <p id="cel-saldo-podpowiedz" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                        </fieldset>
+
+                        <div class="min-[900px]:col-span-2">
+                            <label for="cel-notatka" class="field-label">Opis (opcjonalnie)</label>
+                            <input type="text" id="cel-notatka" maxlength="80" placeholder="np. Chorwacja, 2 tygodnie" class="input">
+                        </div>
+
+                        <p class="min-[900px]:col-span-2 text-[11px] text-[var(--muted)]">Przelewy na ten numer subkonta i wypłaty z podanymi słowami będą automatycznie przypisywane do celu – także te zaimportowane wcześniej.</p>
+                        <p id="cel-blad" role="alert" class="hidden min-[900px]:col-span-2 text-xs text-[var(--c-spend)] p-3 rounded-xl border border-current"></p>
                         <div class="flex gap-2 pt-1 min-[900px]:col-span-2">
-                            <button type="submit" class="btn-primary flex-1 min-[900px]:flex-none min-[900px]:w-48">Zapisz cel</button>
+                            <button type="submit" id="btn-zapisz-cel" class="btn-primary flex-1 min-[900px]:flex-none min-[900px]:w-48">Zapisz cel</button>
                             <button type="button" onclick="zamknijFormularzCelu()" class="btn-secondary">Anuluj</button>
                         </div>
                     </form>
@@ -311,7 +353,7 @@
                 </article>
             </section>
 
-            <!-- 6. USTAWIENIA (zębatka w nagłówku; specyfikacja 11.3 i 9.1) -->
+            <!-- 6. USTAWIENIA (zębatka w nagłówku; specyfikacja 11.3, 9.1, 3 „categories”) -->
             <section id="tab-ustawienia" class="hidden view">
                 <button type="button" onclick="wrocZUstawien()" class="span-all justify-self-start text-sm font-semibold text-[var(--accent)]">‹ <span id="ust-wroc-nazwa">Pulpit</span></button>
 
@@ -340,7 +382,22 @@
                     <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
                     <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
                     <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
-                    <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami i celami. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                    <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                </article>
+
+                <!-- Kategorie: kolor, limit miesięczny, wydatek stały, kolejność, usuwanie (11.1) -->
+                <article class="card space-y-3 span-all">
+                    <div class="flex justify-between items-baseline gap-2">
+                        <h2 class="font-semibold text-sm">Kategorie</h2>
+                        <span id="kat-info" class="text-[11px] text-[var(--muted)]"></span>
+                    </div>
+                    <p class="text-[10px] text-[var(--muted)]">Limit miesięczny pojawia się pod kategorią na Pulpicie (puste pole = bez limitu). „Stała” to wydatek co miesiąc podobny – Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”. Kategorii używanej w transakcjach lub regułach nie można usunąć.</p>
+                    <div id="kat-lista"></div>
+                    <form id="kat-form" onsubmit="dodajKategorie(event)" class="flex gap-2 pt-1">
+                        <label for="kat-nowa" class="sr-only">Nazwa nowej kategorii</label>
+                        <input type="text" id="kat-nowa" maxlength="40" placeholder="Nowa kategoria, np. Dzieci" class="input">
+                        <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj</button>
+                    </form>
                 </article>
 
                 <article class="card space-y-3">

@@ -3,17 +3,27 @@
 //  - lista celów (8.2): kafelki, karty ze statusem, licznik „Za wolno”
 //  - szczegóły celu (8.3): pierścień postępu, zalecenie, kafelki, wykres,
 //    ostatnie operacje, „Edytuj cel” i „Zakończ cel”
-// Przypisanie transakcji do celu (numer subkonta / słowa wypłat) – bez zmian, w rules.js.
+//  - formularz celu (8.4): saldo początkowe, opis, walidacja, kolor z palety
+// Przypisanie transakcji do celu (numer subkonta / słowa wypłat) – w rules.js.
 // Wzory (8.1) – analizaCelu() w calc.js.
 // =====================================================================
 
-// Kolor celu: zapisany w bazie albo z palety 5 kolorów (kolejność celów)
+// Paleta 5 kolorów celów (8.4)
 const PALETA_CELOW = ['#2F5FB3', '#2A9D8F', '#D08A2C', '#C2508A', '#6B5BB5'];
+const MAKS_NAZWA_CELU = 40;
+const NOWY_CEL_ID = '__nowy__';
 
+// Kolor celu: zapisany w bazie; dla starszych celów bez koloru – z palety wg kolejności
 function kolorCelu(cel) {
     if (cel && cel.color) return cel.color;
     const i = Math.max(0, stan.cele.findIndex(c => String(c.id) === String(cel && cel.id)));
     return PALETA_CELOW[i % PALETA_CELOW.length];
+}
+
+// Kolor dla nowego celu: pierwszy z palety, którego nie używa żaden aktywny cel
+function kolorDlaNowegoCelu() {
+    const zajete = new Set(stan.cele.filter(c => !c.archived).map(c => String(kolorCelu(c)).toUpperCase()));
+    return PALETA_CELOW.find(k => !zajete.has(k.toUpperCase())) || PALETA_CELOW[stan.cele.length % PALETA_CELOW.length];
 }
 
 const STATUSY_CELU = {
@@ -98,6 +108,7 @@ function kartaCelu(c, a, zakonczony = false) {
             <div class="flex justify-between items-start gap-2 text-xs">
                 <div class="min-w-0">
                     <h3 class="font-bold text-sm truncate">${esc(c.name)}</h3>
+                    ${c.note ? `<span class="text-[11px] block truncate">${esc(c.note)}</span>` : ''}
                     <span class="text-[10px] text-[var(--muted)] block truncate">Subkonto: ${esc(c.keyword || 'brak')}</span>
                     ${c.keywords_out ? `<span class="text-[10px] text-[var(--muted)] block truncate">Słowa wypłat: ${esc(c.keywords_out)}</span>` : ''}
                 </div>
@@ -129,14 +140,15 @@ function rysujListeCelow() {
     const lista = document.getElementById('lista-celow');
     const boxZakonczone = document.getElementById('cele-zakonczone-box');
 
-    // Stan pusty (10.3): zachęta; formularz otwiera się dopiero po „+ Nowy cel”
+    // Stan pusty (10.3): zachęta + formularz
     if (!stan.cele || stan.cele.length === 0) {
-        lista.innerHTML = `<div class="card text-center text-xs text-[var(--muted)] py-6">Dodaj pierwszy cel, np. poduszkę finansową – kliknij „+ Nowy cel”.</div>`;
+        lista.innerHTML = `<div class="card text-center text-xs text-[var(--muted)] py-6">Dodaj pierwszy cel, np. poduszkę finansową.</div>`;
         document.getElementById('cele-suma-ogolna').innerText = `0 zł`;
         document.getElementById('cele-suma-cel').innerText = '';
         document.getElementById('cele-wplacone').innerText = '0 zł';
         document.getElementById('cele-wplacone-proc').innerText = '';
         boxZakonczone.classList.add('hidden');
+        if (document.getElementById('modal-cel').classList.contains('hidden')) otworzFormularzCelu();
         return;
     }
 
@@ -331,19 +343,106 @@ async function zakonczCel(id, zakoncz = true) {
     pokazKomunikat(zakoncz ? 'Zakończono cel' : 'Przywrócono cel');
 }
 
-// ---- Formularz celu (bez zmian) --------------------------------------
+// =====================================================================
+// FORMULARZ CELU (8.4)
+// =====================================================================
+
+// Bieżący miesiąc 'RRRR-MM' – najwcześniejszy dozwolony termin
+function biezacyMiesiac() {
+    const d = new Date();
+    return kluczMiesiaca(d.getFullYear(), d.getMonth() + 1);
+}
+
+// "12,5" / "1 200" -> grosze; puste -> 0; błędne -> NaN
+function groszeZPolaFormularza(tekst) {
+    const s = String(tekst ?? '').replace(/[\s ]/g, '').replace(',', '.');
+    if (s === '') return 0;
+    if (!/^\d+(\.\d{0,2})?$/.test(s)) return NaN;
+    return Math.round(parseFloat(s) * 100);
+}
+
+// Wartości formularza jako tymczasowy cel (do podpowiedzi o zaimportowanych przelewach)
+function celZFormularza() {
+    const id = document.getElementById('cel-id').value || NOWY_CEL_ID;
+    return {
+        id,
+        name: document.getElementById('cel-nazwa').value.trim(),
+        keyword: czystyNumer(document.getElementById('cel-keyword').value),
+        keywords_out: document.getElementById('cel-keywords-out').value,
+        archived: false
+    };
+}
+
+// Wpłaty − wypłaty z zaimportowanych transakcji, które trafiłyby do tego celu.
+// Liczymy z prawdziwą klasyfikacją, podstawiając cel z formularza w miejsce zapisanego.
+function nettoZaimportowanychDlaCelu(tymczasowy) {
+    if (!tymczasowy.keyword && !tymczasowy.keywords_out) return 0;
+    const zapisane = stan.cele;
+    stan.cele = [...zapisane.filter(c => String(c.id) !== String(tymczasowy.id)), tymczasowy];
+    try {
+        let netto = 0;
+        for (const t of stan.transakcje) {
+            const k = klasyfikuj(t);
+            if (k.cel !== tymczasowy) continue;
+            if (k.typ === 'wplata') netto += Math.abs(t.amount_gr);
+            if (k.typ === 'wyplata') netto -= Math.abs(t.amount_gr);
+        }
+        return netto;
+    } finally {
+        stan.cele = zapisane;
+    }
+}
+
+// Saldo początkowe do zapisu: wpisane saldo, a przy „dzisiejszym saldzie” – minus zaimportowane netto
+function wyliczSaldoPoczatkowe() {
+    const wpisane = groszeZPolaFormularza(document.getElementById('cel-saldo').value);
+    const dzisiejsze = document.getElementById('cel-saldo-dzis').checked;
+    const netto = nettoZaimportowanychDlaCelu(celZFormularza());
+    return { wpisane, dzisiejsze, netto, poczatkowe: dzisiejsze ? wpisane - netto : wpisane };
+}
+
+// Podpowiedź pod polem salda (aktualizowana przy każdej zmianie numeru, słów lub salda)
+function odswiezPodpowiedzSalda() {
+    const p = document.getElementById('cel-saldo-podpowiedz');
+    const { wpisane, dzisiejsze, netto, poczatkowe } = wyliczSaldoPoczatkowe();
+    if (!Number.isFinite(wpisane)) {
+        p.innerText = 'Podaj kwotę, np. 1200 albo 1200,50.';
+        return;
+    }
+    const zImportow = netto === 0
+        ? 'Wśród zaimportowanych transakcji nie ma jeszcze przelewów tego celu.'
+        : `Zaimportowane przelewy tego celu: ${netto > 0 ? '+' : '−'}${zl(Math.abs(netto), 2)} netto.`;
+    const wynik = dzisiejsze
+        ? ` Zapiszemy saldo sprzed importów: ${zl(poczatkowe, 2)}, a w aplikacji cel pokaże ${zl(wpisane, 2)}.`
+        : ` W aplikacji cel pokaże ${zl(poczatkowe + netto, 2)}.`;
+    p.innerText = zImportow + wynik;
+}
+
+function pokazBladCelu(tresc) {
+    const el = document.getElementById('cel-blad');
+    el.innerText = tresc;
+    el.classList.toggle('hidden', !tresc);
+}
 
 function otworzFormularzCelu(id = null) {
     document.getElementById('modal-cel').classList.remove('hidden');
     const cel = id ? stan.cele.find(x => String(x.id) === String(id)) : null;
+    const terminCelu = cel && cel.deadline ? String(cel.deadline).slice(0, 7) : '';
 
     document.getElementById('modal-tytul').innerText = cel ? 'Edytuj cel oszczędnościowy' : 'Dodaj nowy cel oszczędnościowy';
     document.getElementById('cel-id').value = cel ? cel.id : '';
     document.getElementById('cel-nazwa').value = cel ? cel.name : '';
-    document.getElementById('cel-kwota').value = cel ? cel.target_gr / 100 : '';
-    document.getElementById('cel-termin').value = (cel && cel.deadline) || '2026-12-31';
+    document.getElementById('cel-kwota').value = cel ? String(cel.target_gr / 100).replace('.', ',') : '';
+    document.getElementById('cel-termin').value = terminCelu;
+    document.getElementById('cel-termin').min = terminCelu && terminCelu < biezacyMiesiac() ? terminCelu : biezacyMiesiac();
+    document.getElementById('cel-termin').dataset.poprzedni = terminCelu;
     document.getElementById('cel-keyword').value = cel ? (cel.keyword || '') : '';
     document.getElementById('cel-keywords-out').value = cel ? (cel.keywords_out || '') : '';
+    document.getElementById('cel-saldo').value = cel ? String((cel.opening_balance_gr || 0) / 100).replace('.', ',') : '0';
+    document.getElementById('cel-saldo-poczatkowe').checked = true;
+    document.getElementById('cel-notatka').value = cel ? (cel.note || '') : '';
+    pokazBladCelu('');
+    odswiezPodpowiedzSalda();
 
     // Formularz jest nad listą – przewijamy do niego przy edycji z dołu listy
     if (id) document.getElementById('modal-cel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -353,36 +452,70 @@ function zamknijFormularzCelu() {
     document.getElementById('modal-cel').classList.add('hidden');
 }
 
+// Walidacja wg 8.4. Zwraca { dane } albo { blad }.
+function sprawdzFormularzCelu() {
+    const id = document.getElementById('cel-id').value;
+    const name = document.getElementById('cel-nazwa').value.trim();
+    const target_gr = groszeZPolaFormularza(document.getElementById('cel-kwota').value);
+    const termin = document.getElementById('cel-termin').value; // 'RRRR-MM'
+    const terminPoprzedni = document.getElementById('cel-termin').dataset.poprzedni || '';
+    const keyword = czystyNumer(document.getElementById('cel-keyword').value);
+    const keywords_out = document.getElementById('cel-keywords-out').value.trim();
+    const note = document.getElementById('cel-notatka').value.trim();
+    const saldo = wyliczSaldoPoczatkowe();
+
+    if (!name) return { blad: 'Podaj nazwę celu.' };
+    if (name.length > MAKS_NAZWA_CELU) return { blad: `Nazwa celu może mieć najwyżej ${MAKS_NAZWA_CELU} znaków.` };
+    if (!Number.isFinite(target_gr) || target_gr <= 0) return { blad: 'Kwota docelowa musi być większa od 0 zł.' };
+    if (!Number.isFinite(saldo.wpisane) || saldo.wpisane < 0) return { blad: 'Obecne saldo subkonta nie może być ujemne.' };
+    if (saldo.poczatkowe < 0) {
+        return { blad: `Dzisiejsze saldo jest mniejsze niż zaimportowane wpłaty tego celu (${zl(saldo.netto, 2)}). Sprawdź numer subkonta albo wybierz „saldo sprzed pierwszego importu”.` };
+    }
+    if (!/^\d{4}-\d{2}$/.test(termin)) return { blad: 'Wybierz miesiąc terminu.' };
+    // Termin nie wcześniej niż bieżący miesiąc; przy edycji można zostawić dotychczasowy
+    if (termin < biezacyMiesiac() && termin !== terminPoprzedni) return { blad: 'Termin nie może być wcześniejszy niż bieżący miesiąc.' };
+    if (!keyword) return { blad: 'Podaj numer subkonta celu.' };
+    const zajety = stan.cele.find(c => String(c.id) !== String(id) && czystyNumer(c.keyword) === keyword);
+    if (zajety) return { blad: `Ten numer subkonta ma już cel „${zajety.name}”.` };
+
+    return {
+        dane: {
+            id, name, target_gr, keyword, keywords_out, note,
+            deadline: `${termin}-01`, // pierwszy dzień miesiąca terminu (3 „goals”)
+            opening_balance_gr: saldo.poczatkowe
+        }
+    };
+}
+
 async function zapiszCel(e) {
     e.preventDefault();
-    const id = document.getElementById('cel-id').value;
-    const name = document.getElementById('cel-nazwa').value;
-    const target_gr = Math.round(parseFloat(document.getElementById('cel-kwota').value) * 100);
-    const deadline = document.getElementById('cel-termin').value;
-    const keyword = czystyNumer(document.getElementById('cel-keyword').value);
-    const keywords_out = document.getElementById('cel-keywords-out').value;
+    const { dane, blad } = sprawdzFormularzCelu();
+    if (blad) return pokazBladCelu(blad);
+    pokazBladCelu('');
 
-    let error;
-    if (id) {
-        const res = await supabaseClient.from('goals').update({ name, target_gr, deadline, keyword, keywords_out }).eq('id', id);
-        error = res.error;
-    } else {
-        const res = await supabaseClient.from('goals').insert([{ name, target_gr, deadline, keyword, keywords_out, opening_balance_gr: 0 }]);
-        error = res.error;
-    }
+    const { id, ...pola } = dane;
+    const istniejacy = id ? stan.cele.find(c => String(c.id) === String(id)) : null;
+    // Kolor nadawany automatycznie z palety; starszy cel bez koloru dostaje go przy edycji
+    if (!istniejacy) pola.color = kolorDlaNowegoCelu();
+    else if (!istniejacy.color) pola.color = kolorCelu(istniejacy);
 
-    if (error) {
-        alert('Błąd podczas zapisu celu: ' + error.message);
-    } else {
-        zamknijFormularzCelu();
-        pobierzDane();
-        pokazKomunikat(id ? 'Zapisano cel' : 'Dodano nowy cel');
-    }
+    const btn = document.getElementById('btn-zapisz-cel');
+    btn.disabled = true;
+    const res = istniejacy
+        ? await supabaseClient.from('goals').update(pola).eq('id', id)
+        : await supabaseClient.from('goals').insert([pola]);
+    btn.disabled = false;
+
+    if (res.error) return pokazBladCelu(komunikatBledu(res.error, 'Nie zapisano celu'));
+
+    zamknijFormularzCelu();
+    await pobierzDane();
+    pokazKomunikat(istniejacy ? 'Zapisano cel' : 'Dodano nowy cel');
 }
 
 async function usunCel(id) {
     if (!confirm('Czy na pewno chcesz usunąć ten cel?')) return;
     const { error } = await supabaseClient.from('goals').delete().eq('id', id);
     if (!error) pobierzDane();
-    else alert('Błąd usuwania: ' + error.message);
+    else pokazKomunikat(komunikatBledu(error, 'Nie usunięto celu'));
 }
