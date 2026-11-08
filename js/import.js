@@ -29,11 +29,43 @@ const POLA_IMPORTU = [
 // CZĘŚĆ CZYSTA
 // =====================================================================
 
-// 5.2 Kodowanie: UTF-8, a gdy pojawi się „�” – Windows-1250. Bez BOM.
+// 5.2 Kodowanie pliku:
+//  - znacznik BOM: UTF-16 LE / BE (np. „Historia_Operacji_….csv” z Alior Online) albo UTF-8,
+//  - UTF-16 bez BOM: co drugi bajt zerowy (litery łacińskie),
+//  - inaczej UTF-8, a gdy pojawi się „�” – Windows-1250.
+// Zwraca sam tekst; nazwę kodowania zapisuje w ostatnieKodowanie (podpis na ekranie importu).
+let ostatnieKodowanie = '';
+
+function wykryjKodowanie(bajty) {
+    if (bajty[0] === 0xFF && bajty[1] === 0xFE) return 'utf-16le';
+    if (bajty[0] === 0xFE && bajty[1] === 0xFF) return 'utf-16be';
+    if (bajty[0] === 0xEF && bajty[1] === 0xBB && bajty[2] === 0xBF) return 'utf-8';
+    const probka = bajty.subarray(0, Math.min(bajty.length, 2000));
+    let zeraParzyste = 0, zeraNieparzyste = 0;
+    probka.forEach((b, i) => { if (b === 0) (i % 2 ? zeraNieparzyste++ : zeraParzyste++); });
+    const polowa = probka.length / 2;
+    if (zeraNieparzyste > polowa * 0.3 && zeraNieparzyste > zeraParzyste * 4) return 'utf-16le';
+    if (zeraParzyste > polowa * 0.3 && zeraParzyste > zeraNieparzyste * 4) return 'utf-16be';
+    return null;
+}
+
 function dekodujPlik(bufor) {
-    let tekst = new TextDecoder('utf-8').decode(bufor);
-    if (tekst.includes('�')) tekst = new TextDecoder('windows-1250').decode(bufor);
-    return tekst.replace(/^﻿/, '');
+    const bajty = new Uint8Array(bufor);
+    let kodowanie = wykryjKodowanie(bajty);
+    let tekst;
+    if (kodowanie) {
+        tekst = new TextDecoder(kodowanie).decode(bajty);
+    } else {
+        kodowanie = 'utf-8';
+        tekst = new TextDecoder('utf-8').decode(bajty);
+        if (tekst.includes('�')) {
+            kodowanie = 'windows-1250';
+            tekst = new TextDecoder('windows-1250').decode(bajty);
+        }
+    }
+    ostatnieKodowanie = kodowanie;
+    // BOM i ewentualne bajty zerowe (niewidoczne na ekranie, a psują rozpoznanie nagłówka)
+    return tekst.replace(/^﻿/, '').replace(/\u0000/g, '');
 }
 
 // 5.2 Wiersz nagłówka: pierwszy wiersz, w którym któraś komórka zawiera „Data”.
@@ -53,6 +85,7 @@ function znajdzWierszNaglowka(wiersze) {
 // kwoty na pół. Próbujemy każdego separatora i bierzemy ten, przy którym wiersz nagłówka
 // (z „Data”) ma najwięcej wypełnionych kolumn. Brak nagłówka -> najwięcej kolumn w ogóle.
 const SEPARATORY_CSV = [';', ',', '\t'];
+const NAZWY_SEPARATOROW = { ';': 'średnik', ',': 'przecinek', '\t': 'tabulator' };
 
 function parsujCSV(tekst) {
     let najlepszy = null;
@@ -248,6 +281,7 @@ function nowyStanImportu() {
         naglowekIdx: -1,      // -1 = plik bez wiersza nagłówka
         naglowki: [],
         mapa: {},
+        odczyt: '',           // „UTF-16LE · separator: średnik” – podpis diagnostyczny
         bank: null,           // id rozpoznanego banku ('pekao' | 'pko' | 'alior') albo null
         profil: '',           // 'bank' | 'auto' | 'zapisany' | 'reczny'
         przygotowane: [],
@@ -298,11 +332,12 @@ async function wczytajPlik(plik) {
     }
 
     // Separator: średnik (Pekao, Alior) albo przecinek (PKO BP) – patrz parsujCSV
-    const { wiersze, naglowekIdx, maksKolumn } = parsujCSV(tekst);
+    const { wiersze, naglowekIdx, maksKolumn, delimiter } = parsujCSV(tekst);
     if (wiersze.length < 2 || maksKolumn < 3) return pokazBladImportu(KOMUNIKAT_NIE_CSV);
 
     imp = nowyStanImportu();
     imp.nazwaPliku = nazwa;
+    imp.odczyt = `${ostatnieKodowanie.toUpperCase()} · separator: ${NAZWY_SEPARATOROW[delimiter] || delimiter}`;
     imp.wiersze = wiersze;
     imp.naglowekIdx = naglowekIdx;
 
@@ -509,6 +544,7 @@ function rysujMapowanie() {
             <p class="text-xs text-[var(--muted)] mt-1">${imp.naglowekIdx < 0
                 ? 'Nie znaleziono wiersza nagłówka z datą. Wskaż, w której kolumnie są dane.'
                 : 'Nie udało się rozpoznać wszystkich kolumn. Wybór zapamiętamy jako profil banku dla plików o tym układzie.'}</p>
+            <p class="text-[10px] text-[var(--muted)] mt-0.5">Odczyt pliku: ${esc(imp.odczyt)}</p>
         </div>
         <div class="grid gap-2 min-[900px]:grid-cols-2 text-xs">
             ${POLA_IMPORTU.map(({ pole, etykieta, wymagane }) => `
@@ -594,7 +630,7 @@ function rysujPodglad() {
         <div class="flex justify-between items-start gap-3">
             <div class="min-w-0">
                 <h2 class="font-semibold text-sm truncate">Podgląd: <span class="text-[var(--accent)]">${esc(imp.nazwaPliku)}</span></h2>
-                <p class="text-[11px] text-[var(--muted)]">${esc(opisProfilu())} · ${esc(nazwaBudzetu())} ·
+                <p class="text-[11px] text-[var(--muted)]">${esc(opisProfilu())} · ${esc(nazwaBudzetu())} · ${esc(imp.odczyt)} ·
                     <button type="button" onclick="otworzMapowanie()" class="underline">zmień kolumny</button></p>
             </div>
         </div>
