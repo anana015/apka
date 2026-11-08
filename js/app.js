@@ -1,5 +1,5 @@
 // =====================================================================
-// START APLIKACJI, LOGOWANIE, NAWIGACJA
+// START APLIKACJI, LOGOWANIE, NAWIGACJA, PRZEŁĄCZANIE BUDŻETU
 // (ładowany jako ostatni – korzysta ze wszystkich pozostałych plików)
 // =====================================================================
 
@@ -7,7 +7,7 @@ async function sprawdzSesje() {
     try {
         const { data: { session }, error } = await supabaseClient.auth.getSession();
         if (error) throw error;
-        if (session) pokazAplikacje();
+        if (session) pokazAplikacje(session.user);
         else pokazEkranLogowania();
     } catch (err) {
         pokazEkranLogowania();
@@ -26,12 +26,12 @@ async function obsluzLogowanie(e) {
     errorBox.classList.add('hidden');
 
     try {
-        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
         if (error) {
             errorBox.innerText = 'Błędny e-mail lub hasło!';
             errorBox.classList.remove('hidden');
         } else {
-            pokazAplikacje();
+            pokazAplikacje(data.user);
         }
     } catch (err) {
         errorBox.innerText = 'Wystąpił błąd sieci lub autoryzacji.';
@@ -43,10 +43,21 @@ async function obsluzLogowanie(e) {
 
 async function wyloguj() {
     await supabaseClient.auth.signOut();
+    // Dane osobiste nie mogą zostać w pamięci dla kolejnej osoby na tym urządzeniu
+    stan.uzytkownikId = null;
+    stan.uzytkownikEmail = '';
+    stan.budzet = 'wspolny';
+    wyczyscDaneBudzetu();
+    imp = nowyStanImportu();
     pokazEkranLogowania();
 }
 
-function pokazAplikacje() {
+function pokazAplikacje(uzytkownik) {
+    stan.uzytkownikId = uzytkownik ? uzytkownik.id : null;
+    stan.uzytkownikEmail = uzytkownik ? uzytkownik.email || '' : '';
+    stan.budzet = zapamietanyBudzet();
+    odswiezPrzelacznikBudzetu();
+
     document.getElementById('ekran-logowania').classList.add('hidden');
     document.getElementById('glowna-aplikacja').classList.remove('hidden');
     pobierzDane();
@@ -56,6 +67,73 @@ function pokazEkranLogowania() {
     document.getElementById('glowna-aplikacja').classList.add('hidden');
     document.getElementById('ekran-logowania').classList.remove('hidden');
 }
+
+// =====================================================================
+// BUDŻET WSPÓLNY / OSOBISTY
+// Wybór jest zapamiętany osobno dla każdej osoby (localStorage na tym urządzeniu).
+// =====================================================================
+
+function kluczWyboruBudzetu() {
+    return `budzet.widok.${stan.uzytkownikId || 'gosc'}`;
+}
+
+function zapamietanyBudzet() {
+    try {
+        return localStorage.getItem(kluczWyboruBudzetu()) === 'osobisty' ? 'osobisty' : 'wspolny';
+    } catch (e) {
+        return 'wspolny';
+    }
+}
+
+async function zmienBudzet(budzet) {
+    if (!BUDZETY[budzet] || budzet === stan.budzet) return;
+    if (budzet === 'osobisty' && stan.schematBudzetow === false) {
+        pokazKomunikat('Budżet osobisty wymaga migracji bazy: uruchom w Supabase supabase/migracja_2026-11b_budzet_osobisty.sql');
+        return;
+    }
+    stan.budzet = budzet;
+    try { localStorage.setItem(kluczWyboruBudzetu(), budzet); } catch (e) {}
+
+    // Nowy budżet = czyste dane i filtry; niedokończony import zaczyna się od nowa
+    wyczyscDaneBudzetu();
+    imp = nowyStanImportu();
+    zamknijFormularzCelu();
+    odswiezPrzelacznikBudzetu();
+    // Do czasu pobrania pokazujemy pusty ekran nowego budżetu, nie dane poprzedniego
+    przeliczMiesiace();
+    odswiezInterfejs();
+    document.getElementById('app-main').scrollTop = 0;
+    await pobierzDane();
+    pokazKomunikat(`Otwarto: ${nazwaBudzetu()}`);
+}
+
+// Przełącznik w nagłówku, motyw (klasa na <body>), nazwa w menu i tytuł karty
+function odswiezPrzelacznikBudzetu() {
+    const osobisty = stan.budzet === 'osobisty';
+    document.body.classList.toggle('budzet-osobisty', osobisty);
+    document.querySelectorAll('[data-budzet]').forEach(btn => {
+        const aktywny = btn.dataset.budzet === stan.budzet;
+        btn.classList.toggle('is-active', aktywny);
+        btn.setAttribute('aria-checked', String(aktywny));
+        btn.tabIndex = aktywny ? 0 : -1;
+    });
+    document.getElementById('nav-brand-nazwa').innerText = nazwaBudzetu();
+    ustawTytulKarty();
+}
+
+// Strzałki w lewo / w prawo w grupie radiowej (wzorzec WAI-ARIA)
+function klawiszPrzelacznikaBudzetu(e) {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const nowy = stan.budzet === 'wspolny' ? 'osobisty' : 'wspolny';
+    zmienBudzet(nowy);
+    const btn = document.querySelector(`[data-budzet="${nowy}"]`);
+    if (btn) btn.focus();
+}
+
+// =====================================================================
+// KOMUNIKATY I ZAKŁADKI
+// =====================================================================
 
 // Komunikat nad paskiem zakładek, znika po 2,6 s (10.2)
 let toastTimer = null;
@@ -71,6 +149,12 @@ const TYTULY_ZAKLADEK = {
     pulpit: 'Pulpit', transakcje: 'Transakcje', import: 'Import CSV',
     cele: 'Cele oszczędnościowe', statystyki: 'Statystyki', ustawienia: 'Ustawienia'
 };
+
+function ustawTytulKarty() {
+    const tytul = TYTULY_ZAKLADEK[stan.zakladka] || 'Budżet';
+    document.getElementById('app-title').innerText = tytul;
+    document.title = `${tytul} · ${nazwaBudzetu()}`;
+}
 
 // Klik w zakładkę: zamyka otwarte szczegóły, czyści filtr i przewija na górę (10.1).
 // opcje pozwalają wejść na zakładkę z ustawionym filtrem (np. z Pulpitu):
@@ -104,10 +188,7 @@ function zmienZakladke(nazwa, opcje = {}) {
         else btn.removeAttribute('aria-current');
     });
 
-    const tytul = TYTULY_ZAKLADEK[nazwa] || 'Budżet';
-    document.getElementById('app-title').innerText = tytul;
-    document.title = `${tytul} · Budżet Domowy`;
-
+    ustawTytulKarty();
     document.getElementById('app-main').scrollTop = 0;
     odswiezAktywnyEkran();
 }

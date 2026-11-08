@@ -1,14 +1,17 @@
 // =====================================================================
 // EKRAN: IMPORT CSV (specyfikacja 5 i 7.2)
 // Etapy: start -> (mapowanie kolumn) -> podgląd -> wynik.
-// Plik jest czytany w całości w przeglądarce; do bazy trafiają tylko gotowe transakcje.
+// Plik jest czytany w całości w przeglądarce; do bazy trafiają tylko gotowe transakcje
+// (do budżetu, który jest właśnie otwarty – wspólnego albo osobistego, patrz db.js).
+// Banki: Pekao, PKO BP, Alior Bank (profile w banki.js); inne pliki – ogólne
+// mapowanie kolumn albo ręczny wybór, zapamiętywany jako profil banku.
 // Część „czysta” (dekodowanie, wykrywanie kolumn, daty, kwoty, przygotowanie wierszy)
 // nie dotyka interfejsu ani bazy.
 // =====================================================================
 
 const KLUCZ_PROFILI_BANKU = 'budzet.profileBanku';
 
-const KOMUNIKAT_NIE_CSV = 'Ten plik nie wygląda na wyciąg CSV. Pobierz w Pekao24: Historia → Eksport → CSV.';
+const KOMUNIKAT_NIE_CSV = 'Ten plik nie wygląda na wyciąg CSV. Pobierz historię rachunku w formacie CSV (Pekao, PKO BP albo Alior Bank) – instrukcje są pod polem wyboru pliku.';
 
 // Pola, które mapujemy na kolumny pliku (ekran ręcznego wyboru kolumn)
 const POLA_IMPORTU = [
@@ -103,10 +106,10 @@ function parsujDate(tekst) {
 }
 
 // 5.2 Kwota: bez spacji (też twardych), bez „PLN”, przecinek -> kropka, × 100.
-// „-1 234,56” -> -123456. Błędna -> null.
+// „-1 234,56” -> -123456, „+1500.00” -> 150000. Błędna -> null.
 function parsujKwote(tekst) {
     let s = String(tekst || '')
-        .replace(/[\s  ]/g, '')
+        .replace(/[\s  ]/g, '')
         .replace(/PLN/i, '')
         .replace(/−/g, '-'); // typograficzny minus
     if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, ''); // „1.234,56”
@@ -124,34 +127,49 @@ function kluczDuplikatuBazowy(booked_on, amount_gr, tytul, kontrahent) {
 
 // Rachunek drugiej strony: wypływ -> docelowy, wpływ -> źródłowy
 // (wypłata ze wspólnego subkonta niesie wtedy jego numer)
-function rachunekKontrahenta(komorka, amount_gr) {
-    const zrodlowy = komorka('rachZrodlowy');
-    const docelowy = komorka('rachDocelowy');
-    const inny = komorka('rachInny');
+function rachunekKontrahenta({ zrodlowy = '', docelowy = '', inny = '' }, amount_gr) {
     const surowy = amount_gr > 0 ? (zrodlowy || inny || docelowy) : (docelowy || inny || zrodlowy);
     return czystyNumer(surowy);
 }
 
+// Czytnik wiersza wg mapy kolumn (ogólne mapowanie, Pekao, profil zapisany, wybór ręczny)
+function czytnikZMapy(mapa) {
+    return wiersz => {
+        const komorka = pole => (mapa[pole] >= 0 ? String(wiersz[mapa[pole]] ?? '').trim() : '');
+        return {
+            data: komorka('data'),
+            kwota: komorka('kwota'),
+            kontrahent: komorka('kontrahent'),
+            tytul: komorka('tytul'),
+            waluta: komorka('waluta'),
+            rachunki: { zrodlowy: komorka('rachZrodlowy'), docelowy: komorka('rachDocelowy'), inny: komorka('rachInny') }
+        };
+    };
+}
+
 /**
  * Wiersze danych -> wiersze podglądu.
+ * odczytaj(wiersz) -> { data, kwota, kontrahent, tytul, waluta, rachunki } (czytnik banku lub mapy)
  * status: 'nowa' | 'duplikat' | 'blad' (z polem powod)
  */
-function przygotujWiersze(daneWiersze, mapa, istniejaceKlucze) {
+function przygotujWiersze(daneWiersze, odczytaj, istniejaceKlucze) {
     const wystapienia = {};
     const wynik = [];
 
     daneWiersze.forEach((wiersz, nr) => {
         if (wiersz.every(k => !String(k || '').trim())) return; // pusty wiersz
-        const komorka = pole => (mapa[pole] >= 0 ? String(wiersz[mapa[pole]] ?? '').trim() : '');
-
-        const surowaData = komorka('data');
-        const surowaKwota = komorka('kwota');
-        const counterparty = komorka('kontrahent');
-        const title = komorka('tytul');
-        const waluta = komorka('waluta');
+        const o = odczytaj(wiersz);
+        const surowaData = o.data;
+        const surowaKwota = o.kwota;
+        const counterparty = o.kontrahent;
+        const title = o.tytul;
+        const waluta = o.waluta;
 
         const booked_on = parsujDate(surowaData);
         const amount_gr = parsujKwote(surowaKwota);
+        // Wiersz bez daty (pusta lub sam tekst) albo bez daty i kwoty to nie transakcja,
+        // tylko stopka / saldo końcowe / opis pod tabelą. Błędną datę z cyframi pokazujemy jako błąd.
+        if (!booked_on && (!/\d/.test(surowaData) || amount_gr === null)) return;
 
         let powod = '';
         if (!booked_on) powod = surowaData ? `Niepoprawna data „${surowaData}”` : 'Brak daty';
@@ -172,7 +190,7 @@ function przygotujWiersze(daneWiersze, mapa, istniejaceKlucze) {
 
         wynik.push({
             ...t,
-            account_number: rachunekKontrahenta(komorka, amount_gr),
+            account_number: rachunekKontrahenta(o.rachunki || {}, amount_gr),
             dedup_key,
             status: istniejaceKlucze.has(dedup_key) ? 'duplikat' : 'nowa'
         });
@@ -206,7 +224,8 @@ function nowyStanImportu() {
         naglowekIdx: -1,      // -1 = plik bez wiersza nagłówka
         naglowki: [],
         mapa: {},
-        profil: '',           // 'auto' | 'zapisany' | 'reczny'
+        bank: null,           // id rozpoznanego banku ('pekao' | 'pko' | 'alior') albo null
+        profil: '',           // 'bank' | 'auto' | 'zapisany' | 'reczny'
         przygotowane: [],
         wynik: null           // { dodane, doCelow, miesiac }
     };
@@ -254,6 +273,7 @@ async function wczytajPlik(plik) {
         return pokazBladImportu(KOMUNIKAT_NIE_CSV);
     }
 
+    // PapaParse sam wykrywa separator: średnik (Pekao, Alior) albo przecinek (PKO BP)
     const { data } = Papa.parse(tekst, { skipEmptyLines: 'greedy' });
     const wiersze = (data || []).filter(w => Array.isArray(w));
     const maksKolumn = wiersze.reduce((m, w) => Math.max(m, w.length), 0);
@@ -273,10 +293,17 @@ async function wczytajPlik(plik) {
     }
 
     imp.naglowki = wiersze[imp.naglowekIdx].map(n => String(n || '').trim());
+    const bank = rozpoznajBank(imp.naglowki);
+    imp.bank = bank ? bank.id : null;
+
+    // Kolejność: profil zapisany przez użytkownika -> czytnik banku -> ogólne mapowanie kolumn
     const zapisany = wczytajProfile()[podpisNaglowkow(imp.naglowki)];
     if (zapisany && brakujacePola(zapisany.mapa).length === 0) {
         imp.mapa = zapisany.mapa;
         imp.profil = 'zapisany';
+    } else if (bank && bank.czytnik) {
+        imp.profil = 'bank';
+        return przygotujPodglad();
     } else {
         imp.mapa = wykryjKolumny(imp.naglowki);
         imp.profil = 'auto';
@@ -293,9 +320,15 @@ function wierszeDanych() {
     return imp.wiersze.slice(imp.naglowekIdx + 1);
 }
 
+// Czytnik dla bieżącego pliku: profil banku albo mapa kolumn
+function czytnikImportu() {
+    const bank = imp.profil === 'bank' ? profilBankuPoId(imp.bank) : null;
+    return bank && bank.czytnik ? bank.czytnik(imp.naglowki.map(naglowekN)) : czytnikZMapy(imp.mapa);
+}
+
 function przygotujPodglad() {
     const istniejace = new Set(stan.transakcje.map(t => t.dedup_key));
-    imp.przygotowane = przygotujWiersze(wierszeDanych(), imp.mapa, istniejace);
+    imp.przygotowane = przygotujWiersze(wierszeDanych(), czytnikImportu(), istniejace);
     // Klasyfikacja nowych wierszy tymi samymi regułami co zapisane transakcje
     imp.przygotowane.forEach(w => {
         if (w.status === 'nowa') {
@@ -311,6 +344,8 @@ function przygotujPodglad() {
 // ---- Ręczny wybór kolumn ---------------------------------------------
 
 function otworzMapowanie() {
+    // Przy czytniku banku nie ma jeszcze mapy – startujemy od automatycznego rozpoznania
+    if (imp.profil === 'bank' && brakujacePola(imp.mapa).length > 0) imp.mapa = wykryjKolumny(imp.naglowki);
     imp.etap = 'mapowanie';
     odswiezImport();
 }
@@ -346,6 +381,7 @@ async function zapiszZaimportowaneTransakcje() {
     const doCelow = nowe.filter(w => w.klas && w.klas.cel).length;
 
     // Wpis w historii importów. Bez tabeli imports import działa dalej, tylko bez historii.
+    // Kolumna bank powstaje w migracji budżetu osobistego – wysyłamy ją tylko po tej migracji.
     let importId = null;
     const resImport = await supabaseClient.from('imports').insert([{
         file_name: imp.nazwaPliku,
@@ -353,7 +389,8 @@ async function zapiszZaimportowaneTransakcje() {
         rows_added: nowe.length,
         rows_duplicate: imp.przygotowane.filter(w => w.status === 'duplikat').length,
         rows_error: imp.przygotowane.filter(w => w.status === 'blad').length,
-        newest_month: miesiac
+        newest_month: miesiac,
+        ...(stan.schematBudzetow && imp.bank ? { bank: imp.bank } : {})
     }]).select('id').single();
     if (!resImport.error && resImport.data) importId = resImport.data.id;
 
@@ -418,10 +455,25 @@ function odswiezImport() {
     blad.innerText = imp.blad;
     blad.classList.toggle('hidden', !imp.blad);
 
+    // Do którego budżetu trafi import – widoczne od pierwszego ekranu
+    const cel = document.getElementById('import-budzet');
+    if (cel) cel.innerText = `Transakcje trafią do: ${nazwaBudzetu().toLowerCase()}`;
+    if (etap === 'start') rysujInstrukcjeEksportu();
+
     if (etap === 'mapowanie') rysujMapowanie();
     if (etap === 'podglad') rysujPodglad();
     if (etap === 'wynik') rysujWynik();
     if (widoczne['import-historia']) rysujHistorieImportow();
+}
+
+function rysujInstrukcjeEksportu() {
+    const lista = document.getElementById('import-banki');
+    if (!lista || lista.childElementCount) return; // treść stała – rysujemy raz
+    lista.innerHTML = INSTRUKCJE_EKSPORTU.map(({ bank, droga }) => `
+        <li class="flex flex-col min-[480px]:flex-row min-[480px]:justify-between gap-0.5 py-1.5">
+            <span class="font-semibold">${esc(bank)}</span>
+            <span class="text-[var(--muted)]">${esc(droga)}</span>
+        </li>`).join('');
 }
 
 function rysujMapowanie() {
@@ -475,11 +527,14 @@ function opisWierszaImportu(w) {
     return { tekst: 'do przypisania', klasa: 'text-amber-600' };
 }
 
-const OPISY_PROFILU = {
-    auto: 'Rozpoznano kolumny automatycznie (układ Pekao24)',
-    zapisany: 'Użyto zapisanego profilu banku',
-    reczny: 'Kolumny wybrane ręcznie – zapisano jako profil banku'
-};
+function opisProfilu() {
+    const bank = profilBankuPoId(imp.bank);
+    if (imp.profil === 'bank') return `Rozpoznano wyciąg: ${bank ? bank.nazwa : 'bank'}`;
+    if (imp.profil === 'auto') return bank ? `Rozpoznano wyciąg: ${bank.nazwa}` : 'Rozpoznano kolumny automatycznie';
+    if (imp.profil === 'zapisany') return 'Użyto zapisanego profilu banku';
+    if (imp.profil === 'reczny') return 'Kolumny wybrane ręcznie – zapisano jako profil banku';
+    return '';
+}
 
 function rysujPodglad() {
     const p = imp.przygotowane;
@@ -517,7 +572,7 @@ function rysujPodglad() {
         <div class="flex justify-between items-start gap-3">
             <div class="min-w-0">
                 <h2 class="font-semibold text-sm truncate">Podgląd: <span class="text-[var(--accent)]">${esc(imp.nazwaPliku)}</span></h2>
-                <p class="text-[11px] text-[var(--muted)]">${esc(OPISY_PROFILU[imp.profil] || '')} ·
+                <p class="text-[11px] text-[var(--muted)]">${esc(opisProfilu())} · ${esc(nazwaBudzetu())} ·
                     <button type="button" onclick="otworzMapowanie()" class="underline">zmień kolumny</button></p>
             </div>
         </div>
@@ -547,7 +602,7 @@ function rysujWynik() {
         <div class="card space-y-3 text-center py-6">
             <div class="w-12 h-12 rounded-full mx-auto flex items-center justify-center bg-[var(--accent)] text-[var(--on-accent)] text-xl" aria-hidden="true">✓</div>
             <h2 class="font-bold">Wyciąg za ${esc(nazwa)} zapisany</h2>
-            <p class="text-xs text-[var(--muted)]">Dodano ${w.dodane} ${odmiana(w.dodane, 'transakcję', 'transakcje', 'transakcji')}, ${w.doCelow} trafiło do celów.</p>
+            <p class="text-xs text-[var(--muted)]">Dodano ${w.dodane} ${odmiana(w.dodane, 'transakcję', 'transakcje', 'transakcji')} do budżetu: ${esc(nazwaBudzetu().toLowerCase())}, ${w.doCelow} trafiło do celów.</p>
             <div class="flex flex-col min-[480px]:flex-row gap-2 justify-center pt-1">
                 <button type="button" onclick="pokazMiesiacNaPulpicie('${esc(w.miesiac)}')" class="btn-primary min-[480px]:!w-auto px-5">Pokaż ${esc(nazwaKrotka)} na pulpicie</button>
                 <button type="button" onclick="zmienZakladke('cele')" class="btn-secondary">Zobacz cele</button>
@@ -572,17 +627,20 @@ function rysujHistorieImportow() {
         <article class="card space-y-2">
             <h2 class="font-semibold text-sm">Ostatnie importy</h2>
             <ul class="text-xs divide-y divide-[var(--border)]">
-                ${stan.importy.slice(0, 5).map(i => `
+                ${stan.importy.slice(0, 5).map(i => {
+                    const bank = profilBankuPoId(i.bank);
+                    return `
                     <li class="py-1.5 flex justify-between gap-3">
                         <span class="min-w-0">
                             <span class="block font-semibold truncate">${esc(i.file_name || 'plik CSV')}</span>
-                            <span class="text-[10px] text-[var(--muted)]">${esc(data(i.imported_at))}${i.newest_month ? ` · ${esc(nazwaMiesiaca(i.newest_month))}` : ''}</span>
+                            <span class="text-[10px] text-[var(--muted)]">${bank ? `${esc(bank.nazwa)} · ` : ''}${esc(data(i.imported_at))}${i.newest_month ? ` · ${esc(nazwaMiesiaca(i.newest_month))}` : ''}</span>
                         </span>
                         <span class="text-right text-[10px] text-[var(--muted)] whitespace-nowrap kwota">
                             <span class="block text-[var(--c-income)] font-semibold">+${i.rows_added ?? 0} nowych</span>
                             ${i.rows_duplicate ?? 0} dupl.${i.rows_error ? ` · ${i.rows_error} błędnych` : ''}
                         </span>
-                    </li>`).join('')}
+                    </li>`;
+                }).join('')}
             </ul>
         </article>`;
 }

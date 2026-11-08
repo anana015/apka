@@ -31,7 +31,7 @@
             </div>
             <div>
                 <h1 class="text-2xl font-bold">Budżet Domowy</h1>
-                <p class="text-xs text-[var(--muted)] mt-1">Zaloguj się do wspólnego budżetu</p>
+                <p class="text-xs text-[var(--muted)] mt-1">Zaloguj się do budżetu wspólnego i osobistego</p>
             </div>
 
             <form id="form-login" onsubmit="obsluzLogowanie(event)" class="space-y-4 text-left">
@@ -54,11 +54,20 @@
 
         <!-- NAGŁÓWEK -->
         <header class="app-header">
-            <div>
+            <div class="min-w-0">
                 <h1 class="text-xl font-bold" id="app-title">Pulpit</h1>
                 <p class="text-xs opacity-80" id="status-polaczenia" aria-live="polite">Połączono z chmurą</p>
             </div>
-            <div class="flex gap-1">
+            <!-- Przełącznik budżetu: wspólny (oboje) / osobisty (tylko zalogowana osoba) -->
+            <div class="budzet-przelacznik" role="radiogroup" aria-label="Który budżet pokazać" onkeydown="klawiszPrzelacznikaBudzetu(event)">
+                <button type="button" role="radio" data-budzet="wspolny" aria-checked="true" class="budzet-opcja is-active" onclick="zmienBudzet('wspolny')">
+                    <i data-lucide="users" class="w-4 h-4" aria-hidden="true"></i><span>Wspólny</span>
+                </button>
+                <button type="button" role="radio" data-budzet="osobisty" aria-checked="false" tabindex="-1" class="budzet-opcja" onclick="zmienBudzet('osobisty')">
+                    <i data-lucide="user" class="w-4 h-4" aria-hidden="true"></i><span>Osobisty</span>
+                </button>
+            </div>
+            <div class="header-akcje flex gap-1">
                 <button type="button" onclick="pobierzDane()" class="icon-btn" title="Odśwież" aria-label="Odśwież dane">
                     <i data-lucide="rotate-cw" class="w-4 h-4"></i>
                 </button>
@@ -175,13 +184,19 @@
             <section id="tab-import" class="hidden view">
                 <!-- Start: prostokąt z przerywaną ramką; na komputerze działa też przeciągnięcie pliku -->
                 <div id="import-start" class="span-all space-y-3">
+                    <p id="import-budzet" class="text-xs font-semibold text-[var(--accent)]" aria-live="polite"></p>
                     <button type="button" id="import-strefa" class="w-full card border-2 border-dashed border-[var(--border)] p-10 text-center hover:border-[var(--accent)] transition" onclick="document.getElementById('csv-file-input').click()">
                         <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto text-[var(--muted)] mb-2"></i>
                         <span class="block text-sm font-semibold mb-1">Wybierz plik CSV z banku</span>
-                        <span class="block text-xs text-[var(--muted)]">W bankowości internetowej: Historia → Eksport → CSV</span>
+                        <span class="block text-xs text-[var(--muted)]">Pekao · PKO BP · Alior Bank – bank rozpoznamy automatycznie</span>
                         <span class="hidden min-[900px]:block text-[11px] text-[var(--muted)] mt-2">albo przeciągnij plik tutaj</span>
                     </button>
                     <p id="import-blad" role="alert" class="hidden card !p-3 text-xs text-[var(--c-spend)] border border-current"></p>
+                    <details class="card !p-3 text-xs">
+                        <summary class="cursor-pointer font-semibold">Jak pobrać plik CSV z banku?</summary>
+                        <ul id="import-banki" class="mt-2 divide-y divide-[var(--border)]"></ul>
+                        <p class="text-[10px] text-[var(--muted)] mt-2">Plik z innego banku też zadziała: jeśli kolumny nie zostaną rozpoznane, wskażesz je ręcznie, a wybór zapamiętamy.</p>
+                    </details>
                 </div>
                 <input type="file" id="csv-file-input" accept=".csv,text/csv" class="hidden" onchange="obsluzPlikCSV(event)" aria-label="Plik CSV z wyciągiem">
 
@@ -395,7 +410,7 @@
                     <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
                     <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
                     <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
-                    <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                    <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
                 </article>
 
                 <!-- Kategorie: kolor, limit miesięczny, wydatek stały, kolejność, usuwanie (11.1) -->
@@ -435,7 +450,7 @@
         <nav class="app-nav" aria-label="Główne zakładki">
             <div class="nav-brand">
                 <span class="nav-brand-icon"><i data-lucide="wallet" class="w-5 h-5"></i></span>
-                Budżet Domowy
+                <span id="nav-brand-nazwa">Budżet wspólny</span>
             </div>
             <button type="button" onclick="zmienZakladke('pulpit')" class="nav-btn is-active" data-tab="pulpit" aria-current="page">
                 <i data-lucide="layout-dashboard"></i>
@@ -475,6 +490,7 @@
     <script src="js/db.js"></script>
     <script src="js/views/pulpit.js"></script>
     <script src="js/views/transakcje.js"></script>
+    <script src="js/banki.js"></script>
     <script src="js/views/import.js"></script>
     <script src="js/views/cele.js"></script>
     <script src="js/views/statystyki.js"></script>

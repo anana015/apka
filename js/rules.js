@@ -14,6 +14,12 @@ function kategoriaReczna(t) {
     return k && !k.startsWith(PREFIKS_CELU) ? k : null;
 }
 
+// Wspólne subkonto wypłat ze skarbonek dotyczy tylko budżetu wspólnego (konto w Pekao).
+// W budżecie osobistym wypłaty z celów rozpoznajemy po numerze subkonta i słowach wypłat.
+function kontoWyplatZeSkarbonek() {
+    return stan.budzet === 'wspolny' ? KONTO_WYPLAT_ZE_SKARBONEK : '';
+}
+
 // Wypłata: cel po słowach kluczowych wypłat (keywords_out) w tytule / kontrahencie
 function celPoSlowachWyplat(t) {
     const tekstN = normalizuj(`${t.counterparty || ''} ${t.title || ''}`);
@@ -59,8 +65,8 @@ function znajdzCel(t) {
         const cel = celPoSlowachWyplat(t);
         if (cel) return { cel, reczny: false };
 
-        const zKontaWyplat = KONTO_WYPLAT_ZE_SKARBONEK &&
-            (konto.includes(KONTO_WYPLAT_ZE_SKARBONEK) || tekst.includes(KONTO_WYPLAT_ZE_SKARBONEK));
+        const kontoWyplat = kontoWyplatZeSkarbonek();
+        const zKontaWyplat = kontoWyplat && (konto.includes(kontoWyplat) || tekst.includes(kontoWyplat));
         if (zKontaWyplat) return { cel: null, reczny: false };
     }
     return null;
