@@ -106,6 +106,10 @@ function rysujKategorieUstawien() {
                     <input type="checkbox" role="switch" class="switch" ${k.is_fixed ? 'checked' : ''} onchange="zmienPoleKategorii('${id}', 'is_fixed', this.checked)"
                         aria-label="Wydatek stały: ${nazwa}">Stała
                 </label>
+                <label class="flex items-center gap-1.5 text-[var(--muted)] cursor-pointer" title="Liczy się jako oszczędność, nie wydatek (np. akcje, obligacje)">
+                    <input type="checkbox" role="switch" class="switch" ${czyKategoriaOszczednosciowa(k.name) ? 'checked' : ''} onchange="zmienPoleKategorii('${id}', 'is_saving', this.checked)"
+                        aria-label="Oszczędność, nie wydatek: ${nazwa}">Oszczędność
+                </label>
                 <span class="flex items-center gap-1 ml-auto">
                     <button type="button" onclick="przesunKategorie('${id}', -1)" class="p-1 text-[var(--muted)] disabled:opacity-30" ${i === 0 ? 'disabled' : ''} aria-label="Przesuń ${nazwa} wyżej">▲</button>
                     <button type="button" onclick="przesunKategorie('${id}', 1)" class="p-1 text-[var(--muted)] disabled:opacity-30" ${i === n - 1 ? 'disabled' : ''} aria-label="Przesuń ${nazwa} niżej">▼</button>
@@ -376,9 +380,14 @@ function rysujWyborKategorii() {
         </div>
         <fieldset class="grid grid-cols-1 min-[480px]:grid-cols-2 min-[1100px]:grid-cols-3 gap-x-4">
             <legend class="sr-only">Kategorie budżetu</legend>
+            <label class="flex items-center gap-2 py-1 text-xs text-[var(--muted)]">
+                <input type="checkbox" class="accent-[var(--accent)] w-4 h-4 shrink-0" checked disabled>
+                <span class="dot bg-[var(--muted)]" aria-hidden="true"></span>
+                <span class="truncate">${esc(POMIN)} <span class="text-[10px]">(zawsze dostępna – transakcja nie wchodzi do sum)</span></span>
+            </label>
             ${pozycje}
         </fieldset>
-        <p class="text-[10px] text-[var(--muted)]">Kategorii „w użyciu” (ręcznie wybranych w transakcjach albo w regułach) nie można odznaczyć. Odznaczone, nieużywane kategorie zostaną usunięte – zawsze możesz je tu dodać z powrotem.</p>
+        <p class="text-[10px] text-[var(--muted)]">Kategorii „w użyciu” (ręcznie wybranych w transakcjach albo w regułach) nie można odznaczyć, ale <strong>nazwę każdej kategorii, także używanej, zmienisz na liście poniżej</strong> – nowa nazwa przejdzie na transakcje i reguły. Odznaczone, nieużywane kategorie zostaną usunięte – zawsze możesz je tu dodać z powrotem.</p>
         <p id="kat-wybor-podsumowanie" class="text-xs font-semibold" aria-live="polite"></p>
         <div class="flex gap-2 flex-wrap">
             <button type="button" id="btn-kat-wybor-zapisz" onclick="zapiszWyborKategorii()" class="btn-primary !w-auto px-6">Zapisz listę</button>
@@ -575,10 +584,11 @@ function eksportujCSV() {
             ? k.podzial.map((c, i) => ({
                 tytul: `${t.title || ''} [część ${i + 1}/${k.podzial.length}]`,
                 kwota: c.amount_gr,
-                typ: c.category === POMIN ? NAZWY_TYPOW.pominiete : NAZWY_TYPOW.wydatek,
+                typ: c.category === POMIN ? NAZWY_TYPOW.pominiete
+                    : czyKategoriaOszczednosciowa(c.category) ? NAZWY_TYPOW.wplata : NAZWY_TYPOW.wydatek,
                 kategoria: c.category === POMIN ? '' : c.category
             }))
-            : [{ tytul: t.title, kwota: t.amount_gr, typ: NAZWY_TYPOW[k.typ] || k.typ, kategoria: kategoriaLubCel(k) }];
+            : [{ tytul: t.title, kwota: t.amount_gr, typ: czyWydatekOszczednosciowy(k) ? NAZWY_TYPOW.wplata : (NAZWY_TYPOW[k.typ] || k.typ), kategoria: kategoriaLubCel(k) }];
         for (const c of czesci) {
             wiersze.push([
                 poleCSV(t.booked_on),

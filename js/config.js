@@ -13,7 +13,8 @@ const POMIN = 'Pomiń';
 const PREFIKS_CELU = 'SKARBONKA:';
 
 // Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli lub kolumny
-const PLIK_MIGRACJI = 'supabase/migracja_2026-11.sql';
+// (najnowszy skrypt; wymaga wcześniejszych: migracja_2026-11.sql i migracja_2026-11b_budzet_osobisty.sql)
+const PLIK_MIGRACJI = 'supabase/migracja_2026-11c_kategorie_oszczednosci.sql';
 
 // Kategorie startowe budżetu wspólnego. Przy pierwszym uruchomieniu trafiają do tabeli
 // categories, potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.
@@ -64,6 +65,10 @@ const GRUPA_KATEGORII = {
 const KATEGORIE_STALE = ['Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda', 'Ubezpieczenie auta',
     KATEGORIA_PRZELEW_WSPOLNE, 'Subskrypcje'];
 
+// Kategorie oszczędnościowe na start (pole is_saving): wydatek w nich liczy się jako
+// oszczędność (licznik „Odłożone”, stopa oszczędności), a nie jako wydatek
+const KATEGORIE_OSZCZEDNOSCIOWE = ['Akcje/Obligacje'];
+
 // Docelowa stopa oszczędności w % (pkt 9.1); użytkownik zmienia ją w Ustawieniach
 const DOCELOWA_STOPA_DOMYSLNA = 15;
 
@@ -89,6 +94,9 @@ function wierszKategorii(name, sort_order) {
         color: KOLORY_GRUP[GRUPA_KATEGORII[name]] || KOLORY_GRUP.Inne,
         monthly_limit_gr: null,
         is_fixed: KATEGORIE_STALE.includes(name),
+        // is_saving tylko gdy true – przed migracją 2026-11c kolumny nie ma i zwykłe kategorie
+        // muszą dać się zapisać
+        ...(KATEGORIE_OSZCZEDNOSCIOWE.includes(name) ? { is_saving: true } : {}),
         sort_order
     };
 }

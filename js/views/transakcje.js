@@ -120,6 +120,11 @@ const KLASA_KWOTY = {
     pominiete: 'text-[var(--muted)] line-through'
 };
 
+// Kolor kwoty: wydatek w kategorii oszczędnościowej (np. Akcje/Obligacje) jak wpłata na oszczędności
+function klasaKwoty(k) {
+    return KLASA_KWOTY[czyWydatekOszczednosciowy(k) ? 'wplata' : k.typ] || '';
+}
+
 function prawaKolumna(t, k) {
     if (k.podzial) {
         return `<button type="button" onclick="otworzPodzial('${esc(t.id)}')" class="status-label text-[var(--accent)] hover:underline" title="Zmień lub usuń podział">✂ Podzielona (${k.podzial.length})</button>`;
@@ -145,12 +150,13 @@ function prawaKolumna(t, k) {
     const opcjeCelow = stan.cele
         .map(c => `<option value="${esc(PREFIKS_CELU + c.id)}" ${wybranyCelId === String(c.id) ? 'selected' : ''}>[Skarbonka] ${esc(c.name)}</option>`)
         .join('');
+    // „Pomiń” zaraz pod „Wybierz…”, żeby nie ginęła pod długą listą kategorii i skarbonek
     return `
         <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Kategoria transakcji" class="${KLASA_SELECT} ${bezKat ? 'border-amber-400 ring-1 ring-amber-400' : 'border-[var(--border)]'}">
             <option value="">Wybierz kategorię...</option>
-            <optgroup label="Zwykłe kategorie">${opcjeKategorii}</optgroup>
-            <optgroup label="Skarbonki">${opcjeCelow}</optgroup>
-            <option value="${POMIN}" ${k.typ === 'pominiete' ? 'selected' : ''}>${POMIN}</option>
+            <option value="${POMIN}" ${k.typ === 'pominiete' ? 'selected' : ''}>${POMIN} (nie licz w sumach)</option>
+            <optgroup label="Kategorie">${opcjeKategorii}</optgroup>
+            ${opcjeCelow ? `<optgroup label="Skarbonki">${opcjeCelow}</optgroup>` : ''}
             ${moznaPodzielic(t, k) ? `<option value="${PODZIEL}">✂ Podziel na kilka kategorii…</option>` : ''}
         </select>`;
 }
@@ -173,7 +179,7 @@ function wierszTransakcji({ t, k }) {
             </div>
             <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
                 <div class="flex items-center gap-1">
-                    <span class="font-bold kwota ${KLASA_KWOTY[k.typ] || ''}">${(t.amount_gr / 100).toFixed(2)} zł</span>
+                    <span class="font-bold kwota ${klasaKwoty(k)}">${(t.amount_gr / 100).toFixed(2)} zł</span>
                     <button type="button" onclick="usunTransakcje('${esc(t.id)}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1" title="Usuń transakcję" aria-label="Usuń transakcję">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     </button>
@@ -270,9 +276,11 @@ function odswiezTransakcje() {
 
     const s = podsumuj(dane.map(w => w.t));
     // Przy filtrze kategorii liczymy tylko części z tej kategorii – suma = kwota z Pulpitu
+    const wKategorii = kategoria ? (s.kategorie[kategoria] || s.kategorieOszczednosci[kategoria] || 0) : 0;
     podsumowanie.innerText = kategoria
-        ? `${dane.length} ${odmianaTransakcji(dane.length)} · razem w kategorii ${zl(s.kategorie[kategoria] || 0, 2)}`
-        : `${dane.length} ${odmianaTransakcji(dane.length)} · wpływy ${zl(s.przychody + s.wyplaty, 2)} · wydatki ${zl(s.wydatki, 2)}`;
+        ? `${dane.length} ${odmianaTransakcji(dane.length)} · razem w kategorii ${zl(wKategorii, 2)}`
+        : `${dane.length} ${odmianaTransakcji(dane.length)} · wpływy ${zl(s.przychody + s.wyplaty, 2)} · wydatki ${zl(s.wydatki, 2)}` +
+            (s.inwestycje ? ` · odłożone w kategoriach ${zl(s.inwestycje, 2)}` : '');
 
     // „Wszystkie miesiące”: sekcje miesięcy od najnowszego, w środku data rosnąco
     const grupy = {};
@@ -328,7 +336,8 @@ async function zmienKategorieTransakcji(id, nowaKat) {
 
     let komunikat = 'Zaktualizowano kategorię';
 
-    // „Zapamiętaj dla podobnych” (4.4): reguła z dwóch pierwszych sensownych słów
+    // „Zapamiętaj dla podobnych” (4.4): reguła z dwóch pierwszych sensownych słów.
+    // Reguła zapisuje się w otwartym budżecie (wspólnym albo osobistym) – patrz db.js.
     if (zapamietujPodobne() && wartosc && wartosc !== POMIN && !wartosc.startsWith(PREFIKS_CELU)) {
         const fraza = utworzFraze(t.counterparty, t.title);
         if (fraza) {
@@ -385,7 +394,7 @@ function moznaPodzielic(t, k) {
 
 // "12,50" / "1 234.5" -> grosze; puste lub błędne -> NaN
 function groszeZPola(tekst) {
-    const s = String(tekst || '').replace(/[\s ]/g, '').replace(',', '.');
+    const s = String(tekst || '').replace(/[\s ]/g, '').replace(',', '.');
     if (!/^\d+(\.\d{0,2})?$/.test(s)) return NaN;
     return Math.round(parseFloat(s) * 100);
 }
@@ -462,8 +471,8 @@ function edytorPodzialu(t) {
     const cz = stan.podzial.czesci;
     const n = cz.length;
     const opcje = wybrana => `<option value="">Kategoria…</option>` +
-        stan.kategorie.map(kat => `<option value="${esc(kat.name)}" ${wybrana === kat.name ? 'selected' : ''}>${esc(kat.name)}</option>`).join('') +
-        `<option value="${POMIN}" ${wybrana === POMIN ? 'selected' : ''}>${POMIN}</option>`;
+        `<option value="${POMIN}" ${wybrana === POMIN ? 'selected' : ''}>${POMIN} (nie licz)</option>` +
+        stan.kategorie.map(kat => `<option value="${esc(kat.name)}" ${wybrana === kat.name ? 'selected' : ''}>${esc(kat.name)}</option>`).join('');
 
     const wiersze = cz.map((c, i) => {
         const ostatnia = i === n - 1;

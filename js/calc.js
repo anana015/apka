@@ -17,8 +17,11 @@ function liczBezKategorii() {
 }
 
 // Sumy dla listy transakcji. Pominięte nie wchodzą do żadnej sumy.
+// Wydatek w kategorii oszczędnościowej (np. „Akcje/Obligacje”) liczy się jak wpłata
+// na oszczędności: do wplaty i odłożonego netto, nie do wydatków ani listy kategorii.
+// s.inwestycje = ta część wpłat (do podpisów), s.kategorieOszczednosci = rozbicie wg kategorii.
 function podsumuj(lista) {
-    const s = { przychody: 0, wydatki: 0, wplaty: 0, wyplaty: 0, kategorie: {} };
+    const s = { przychody: 0, wydatki: 0, wplaty: 0, wyplaty: 0, inwestycje: 0, kategorie: {}, kategorieOszczednosci: {} };
     for (const t of lista) {
         const k = klasyfikuj(t);
         const kwota = Math.abs(t.amount_gr);
@@ -31,6 +34,12 @@ function podsumuj(lista) {
                 : [{ nazwa: k.kategoria || 'Nieprzypisane', kwota }];
             for (const c of czesci) {
                 if (c.nazwa === POMIN) continue;
+                if (czyKategoriaOszczednosciowa(c.nazwa)) {
+                    s.wplaty += c.kwota;
+                    s.inwestycje += c.kwota;
+                    s.kategorieOszczednosci[c.nazwa] = (s.kategorieOszczednosci[c.nazwa] || 0) + c.kwota;
+                    continue;
+                }
                 s.wydatki += c.kwota;
                 s.kategorie[c.nazwa] = (s.kategorie[c.nazwa] || 0) + c.kwota;
             }

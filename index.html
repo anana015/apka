@@ -128,7 +128,7 @@
                         <p class="tile-value kwota text-[var(--c-spend)]" id="pulpit-wydatki">0 zł</p>
                     </div>
                     <div class="card">
-                        <span class="tile-label">Na subkonta (netto)</span>
+                        <span class="tile-label" title="Wpłaty na cele i kategorie oszczędnościowe (np. Akcje/Obligacje) minus wypłaty z celów">Odłożone (netto)</span>
                         <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-oszczednosci">0 zł</p>
                         <span class="tile-note" id="pulpit-stopa-proc">0% przychodów</span>
                     </div>
@@ -435,7 +435,8 @@
                         </span>
                     </div>
                     <div id="kat-wybor" class="hidden space-y-3 p-3 rounded-xl border border-[var(--border)]"></div>
-                    <p class="text-[10px] text-[var(--muted)]">Każdy budżet ma własne kategorie i reguły. Limit miesięczny pojawia się pod kategorią na Pulpicie (puste pole = bez limitu). „Stała” to wydatek co miesiąc podobny – Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”. Kategorii używanej w transakcjach lub regułach nie można usunąć.</p>                    <div id="kat-lista"></div>
+                    <p class="text-[10px] text-[var(--muted)]">Każdy budżet ma własne kategorie i reguły. Limit miesięczny pojawia się pod kategorią na Pulpicie (puste pole = bez limitu). „Stała” to wydatek co miesiąc podobny – Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”. „Oszczędność” – płatności w tej kategorii (np. Akcje/Obligacje) liczą się do odłożonych pieniędzy i stopy oszczędności, a nie do wydatków. Kategorii używanej w transakcjach lub regułach nie można usunąć.</p>
+                    <div id="kat-lista"></div>
                     <form id="kat-form" onsubmit="dodajKategorie(event)" class="flex gap-2 pt-1">
                         <label for="kat-nowa" class="sr-only">Nazwa nowej kategorii</label>
                         <input type="text" id="kat-nowa" maxlength="40" placeholder="Nowa kategoria, np. Dzieci" class="input">

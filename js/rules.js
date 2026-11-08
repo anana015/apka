@@ -115,6 +115,19 @@ function podzialTransakcji(t) {
     return suma === t.amount_gr ? p : null;
 }
 
+// Kategoria oszczędnościowa (categories.is_saving, a przed migracją lista z config.js):
+// wydatek w niej liczy się jako oszczędność, nie wydatek (podsumuj w calc.js)
+function czyKategoriaOszczednosciowa(nazwa) {
+    const k = (stan.kategorie || []).find(x => x.name === nazwa);
+    if (k && typeof k.is_saving === 'boolean') return k.is_saving;
+    return KATEGORIE_OSZCZEDNOSCIOWE.includes(nazwa);
+}
+
+// Wydatek, który w całości trafia do oszczędności (do kolorów i eksportu; podział liczy podsumuj)
+function czyWydatekOszczednosciowy(k) {
+    return k.typ === 'wydatek' && !!k.kategoria && czyKategoriaOszczednosciowa(k.kategoria);
+}
+
 // typ: 'pominiete' | 'wplata' | 'wyplata' | 'przychod' | 'wydatek'
 // Wydatek podzielony ma kategoria = null i podzial = [...części].
 function klasyfikuj(t) {
