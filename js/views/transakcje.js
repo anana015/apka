@@ -5,6 +5,7 @@
 //  - filtr kategorii i zakresu dat – wejście z Pulpitu („Wydatki według kategorii”)
 //  - przełącznik „Zapamiętaj kategorię dla podobnych transakcji” (4.4)
 //  - kolejność: data rosnąco w obrębie miesiąca (jak na wyciągu)
+//  - usuwanie transakcji z potwierdzeniem pod wierszem (10.2, potwierdzenia.js)
 // =====================================================================
 
 const KLUCZ_ZAPAMIETAJ = 'budzet.zapamietajPodobne';
@@ -26,12 +27,14 @@ function zmienZapamietywanie(wlaczone) {
 function zmienFiltrTransakcji(typ) {
     stan.filtrTransakcji = typ;
     stan.podzial = null;
+    stan.potwierdzenie = null;
     odswiezTransakcje();
 }
 
 function wybierzMiesiacTransakcji(m) {
     stan.miesiacTransakcji = m || WSZYSTKIE_MIESIACE;
     stan.podzial = null;
+    stan.potwierdzenie = null;
     odswiezTransakcje();
 }
 
@@ -74,6 +77,7 @@ function wyczyscFiltrKategorii() {
     stan.filtrKategorii = null;
     stan.zakresTransakcji = null;
     stan.podzial = null;
+    stan.potwierdzenie = null;
     odswiezTransakcje();
 }
 
@@ -169,6 +173,7 @@ function wierszTransakcji({ t, k }) {
         const tekst = `${esc(c.category)} ${(Math.abs(c.amount_gr) / 100).toFixed(2)} zł`;
         return c.category === stan.filtrKategorii ? `<strong class="text-[var(--fg)]">${tekst}</strong>` : tekst;
     }).join(' · ') : '';
+    const id = esc(t.id);
     return `
         <article class="card text-xs">
           <div class="flex justify-between items-start gap-3">
@@ -184,11 +189,12 @@ function wierszTransakcji({ t, k }) {
             <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
                 <div class="flex items-center gap-1">
                     <span class="font-bold kwota ${klasaKwoty(k)}">${(t.amount_gr / 100).toFixed(2)} zł</span>
-                    <button type="button" onclick="otworzSzczegolyTransakcji('${esc(t.id)}')" class="${t.note || t.receipt_path ? 'text-[var(--accent)]' : 'text-[var(--muted)]'} hover:text-[var(--accent)] transition p-1"
+                    <button type="button" onclick="otworzSzczegolyTransakcji('${id}')" class="${t.note || t.receipt_path ? 'text-[var(--accent)]' : 'text-[var(--muted)]'} hover:text-[var(--accent)] transition p-1"
                         title="Notatka i paragon" aria-label="Notatka i paragon" aria-expanded="${stan.szczegolyTransakcji === String(t.id)}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
                     </button>
-                    <button type="button" onclick="usunTransakcje('${esc(t.id)}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1" title="Usuń transakcję" aria-label="Usuń transakcję">
+                    <button type="button" id="btn-usun-${id}" onclick="pytajOUsuniecieTransakcji('${id}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1"
+                        title="Usuń transakcję" aria-label="Usuń transakcję" aria-expanded="${czyPotwierdzenie('transakcja', t.id)}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     </button>
                 </div>
@@ -197,6 +203,7 @@ function wierszTransakcji({ t, k }) {
           </div>
           ${edytorPodzialu(t)}
           ${panelSzczegolowTransakcji(t)}
+          ${panelUsuwaniaTransakcji(t)}
         </article>`;
 }
 
@@ -308,22 +315,60 @@ function odmianaTransakcji(n) {
     return odmiana(n, 'transakcja', 'transakcje', 'transakcji');
 }
 
-// ---- Zapis -----------------------------------------------------------
+// ---- Usuwanie transakcji (potwierdzenie pod wierszem, 10.2) ----------
 
+function pytajOUsuniecieTransakcji(id) {
+    if (czyPotwierdzenie('transakcja', id)) return anulujUsuwanieTransakcji(id); // drugi klik w kosz zamyka
+    stan.podzial = null;
+    stan.szczegolyTransakcji = null;
+    otworzPotwierdzenie('transakcja', id, odswiezTransakcje);
+}
+
+function anulujUsuwanieTransakcji(id) {
+    zamknijPotwierdzenie(odswiezTransakcje, `btn-usun-${id}`);
+}
+
+function panelUsuwaniaTransakcji(t) {
+    if (!czyPotwierdzenie('transakcja', t.id)) return '';
+    const id = esc(t.id);
+    const znikna = [t.note && 'notatka', t.receipt_path && 'zdjęcie paragonu'].filter(Boolean);
+    const opis = [
+        znikna.length ? `Razem z nią ${znikna.length > 1 ? 'znikną' : 'zniknie'} ${znikna.join(' i ')}.` : '',
+        // Klucz duplikatu znika razem z transakcją, więc ponowny import ją doda
+        'Jeśli ponownie zaimportujesz ten wyciąg, transakcja wróci.'
+    ].filter(Boolean).join(' ');
+    return htmlPotwierdzenia({
+        rodzaj: 'transakcja',
+        id: t.id,
+        pytanie: 'Usunąć tę transakcję?',
+        opis,
+        tak: 'Usuń',
+        tekstWTrakcie: 'Usuwam…',
+        akcjaTak: `usunTransakcje('${id}')`,
+        akcjaNie: `anulujUsuwanieTransakcji('${id}')`,
+        klasa: 'mt-2 pt-2 border-t border-[var(--border)]'
+    });
+}
+
+// Wywoływane tylko przyciskiem „Usuń” w potwierdzeniu
 async function usunTransakcje(id) {
-    if (!confirm('Czy na pewno chcesz usunąć tę transakcję?')) return;
-
     const usuwana = stan.transakcje.find(t => String(t.id) === String(id));
-    const { error } = await supabaseClient.from('transakcje').delete().eq('id', id);
-    if (error) {
-        pokazKomunikat('Nie udało się usunąć: ' + error.message);
-        return;
-    }
-    if (usuwana) await usunPlikParagonu(usuwana.receipt_path);
-    stan.transakcje = stan.transakcje.filter(t => String(t.id) !== String(id));
+    const udane = await wykonajPotwierdzenie('transakcja', id, odswiezTransakcje, async () => {
+        const { error } = await supabaseClient.from('transakcje').delete().eq('id', id);
+        if (error) {
+            pokazKomunikat(komunikatBledu(error, 'Nie udało się usunąć transakcji'));
+            return false;
+        }
+        if (usuwana) await usunPlikParagonu(usuwana.receipt_path);
+        stan.transakcje = stan.transakcje.filter(t => String(t.id) !== String(id));
+        return true;
+    });
+    if (!udane) return;
     odswiezInterfejs();
     pokazKomunikat('Usunięto transakcję');
 }
+
+// ---- Zapis kategorii -------------------------------------------------
 
 async function zmienKategorieTransakcji(id, nowaKat) {
     if (nowaKat === PODZIEL) {
@@ -406,7 +451,7 @@ function moznaPodzielic(t, k) {
 
 // "12,50" / "1 234.5" -> grosze; puste lub błędne -> NaN
 function groszeZPola(tekst) {
-    const s = String(tekst || '').replace(/[\s ]/g, '').replace(',', '.');
+    const s = String(tekst || '').replace(/[\s ]/g, '').replace(',', '.');
     if (!/^\d+(\.\d{0,2})?$/.test(s)) return NaN;
     return Math.round(parseFloat(s) * 100);
 }
@@ -429,6 +474,7 @@ function otworzPodzial(id) {
     czesci[czesci.length - 1].kwota = ''; // ostatnia = reszta
     stan.podzial = { id: String(id), czesci };
     stan.szczegolyTransakcji = null;
+    stan.potwierdzenie = null;
     odswiezTransakcje();
 }
 

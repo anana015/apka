@@ -4,6 +4,7 @@
 //  - szczegóły celu (8.3): pierścień postępu, zalecenie, kafelki, wykres,
 //    ostatnie operacje, „Edytuj cel” i „Zakończ cel”
 //  - formularz celu (8.4): saldo początkowe, opis, walidacja, kolor z palety
+//  - usunięcie i zakończenie celu z potwierdzeniem na ekranie (10.2, potwierdzenia.js)
 // Przypisanie transakcji do celu (numer subkonta / słowa wypłat) – w rules.js.
 // Wzory (8.1) – analizaCelu() w calc.js.
 // =====================================================================
@@ -77,6 +78,7 @@ function liczCeleZaWolno() {
 
 function otworzSzczegolyCelu(id) {
     stan.otwartyCel = String(id);
+    stan.potwierdzenie = null;
     zamknijFormularzCelu();
     document.getElementById('app-main').scrollTop = 0;
     odswiezCele();
@@ -84,6 +86,7 @@ function otworzSzczegolyCelu(id) {
 
 function zamknijSzczegolyCelu() {
     stan.otwartyCel = null;
+    stan.potwierdzenie = null;
     document.getElementById('app-main').scrollTop = 0;
     odswiezCele();
 }
@@ -112,8 +115,9 @@ function odswiezCele() {
 function kartaCelu(c, a, zakonczony = false) {
     const procent = Math.round(a.postep * 100);
     const kolor = kolorCelu(c);
+    const id = esc(c.id);
     return `
-        <article class="card space-y-2.5 cursor-pointer hover:ring-1 hover:ring-[var(--border)] transition ${zakonczony ? 'opacity-70' : ''}" onclick="otworzSzczegolyCelu('${esc(c.id)}')">
+        <article class="card space-y-2.5 cursor-pointer hover:ring-1 hover:ring-[var(--border)] transition ${zakonczony ? 'opacity-70' : ''}" onclick="otworzSzczegolyCelu('${id}')">
             <div class="flex justify-between items-start gap-2 text-xs">
                 <div class="min-w-0">
                     <h3 class="font-bold text-sm truncate">${esc(c.name)}</h3>
@@ -136,13 +140,32 @@ function kartaCelu(c, a, zakonczony = false) {
                 <span>Postęp: ${procent}%${a.terminKlucz ? ` · do ${esc(miesiacRokDopelniacz(a.terminKlucz))}` : ''}</span>
                 <div class="space-x-3 whitespace-nowrap">
                     ${zakonczony
-                        ? `<button type="button" onclick="event.stopPropagation(); zakonczCel('${esc(c.id)}', false)" class="text-[var(--accent)] font-semibold hover:underline">Przywróć</button>`
-                        : `<button type="button" onclick="event.stopPropagation(); otworzFormularzCelu('${esc(c.id)}')" class="text-[var(--accent)] font-semibold hover:underline">Edytuj</button>`}
-                    <button type="button" onclick="event.stopPropagation(); usunCel('${esc(c.id)}')" class="text-[var(--c-spend)] hover:underline">Usuń</button>
-                    <button type="button" onclick="event.stopPropagation(); otworzSzczegolyCelu('${esc(c.id)}')" class="text-[var(--fg)] font-semibold hover:underline">Szczegóły ›</button>
+                        ? `<button type="button" onclick="event.stopPropagation(); zakonczCel('${id}', false)" class="text-[var(--accent)] font-semibold hover:underline">Przywróć</button>`
+                        : `<button type="button" onclick="event.stopPropagation(); otworzFormularzCelu('${id}')" class="text-[var(--accent)] font-semibold hover:underline">Edytuj</button>`}
+                    <button type="button" id="cel-usun-${id}" onclick="event.stopPropagation(); pytajOUsuniecieCelu('${id}')" class="text-[var(--c-spend)] hover:underline"
+                        aria-expanded="${czyPotwierdzenie('cel-usun', c.id)}">Usuń</button>
+                    <button type="button" onclick="event.stopPropagation(); otworzSzczegolyCelu('${id}')" class="text-[var(--fg)] font-semibold hover:underline">Szczegóły ›</button>
                 </div>
             </div>
+            ${potwierdzenieUsunieciaCelu(c)}
         </article>`;
+}
+
+function potwierdzenieUsunieciaCelu(c) {
+    if (!czyPotwierdzenie('cel-usun', c.id)) return '';
+    const id = esc(c.id);
+    return htmlPotwierdzenia({
+        rodzaj: 'cel-usun',
+        id: c.id,
+        pytanie: `Usunąć cel „${c.name}”?`,
+        opis: 'Transakcje zostaną, ale przestaną być przypisane do tego celu.' +
+            (c.archived ? '' : ' Jeśli chcesz zachować historię celu, zakończ go zamiast usuwać.'),
+        tak: 'Usuń cel',
+        tekstWTrakcie: 'Usuwam…',
+        akcjaTak: `usunCel('${id}')`,
+        akcjaNie: `anulujPotwierdzenieCelu('cel-usun-${id}')`,
+        klasa: 'pt-2 border-t border-[var(--border)] cursor-default'
+    });
 }
 
 function rysujListeCelow() {
@@ -257,6 +280,30 @@ function wykresWplatWyplat(a, kolor) {
     });
 }
 
+// Przyciski pod szczegółami celu; „Zakończ cel” najpierw pokazuje potwierdzenie na ekranie
+function akcjeSzczegolowCelu(c) {
+    const id = esc(c.id);
+    if (czyPotwierdzenie('cel-zakoncz', c.id)) {
+        return htmlPotwierdzenia({
+            rodzaj: 'cel-zakoncz',
+            id: c.id,
+            pytanie: `Zakończyć cel „${c.name}”?`,
+            opis: 'Zniknie z listy aktywnych celów i przestanie łapać nowe przelewy. Możesz go później przywrócić.',
+            tak: 'Zakończ cel',
+            akcjaTak: `zakonczCel('${id}', true)`,
+            akcjaNie: `anulujPotwierdzenieCelu('cel-zakoncz-${id}')`,
+            klasa: 'card border border-[var(--c-spend)]'
+        });
+    }
+    return `
+        <div class="flex gap-2 flex-wrap">
+            <button type="button" onclick="edytujZeSzczegolow('${id}')" class="btn-secondary">Edytuj cel</button>
+            ${c.archived
+                ? `<button type="button" onclick="zakonczCel('${id}', false)" class="btn-secondary">Przywróć cel</button>`
+                : `<button type="button" id="cel-zakoncz-${id}" onclick="pytajOZakonczenieCelu('${id}')" class="btn-secondary !text-[var(--c-spend)]">Zakończ cel</button>`}
+        </div>`;
+}
+
 function rysujSzczegolyCelu(c) {
     const { wynik, ops } = analizyCelow();
     const a = wynik[c.id];
@@ -340,26 +387,57 @@ function rysujSzczegolyCelu(c) {
                 </article>
             </div>
 
-            <div class="flex gap-2 flex-wrap">
-                <button type="button" onclick="edytujZeSzczegolow('${esc(c.id)}')" class="btn-secondary">Edytuj cel</button>
-                ${c.archived
-                    ? `<button type="button" onclick="zakonczCel('${esc(c.id)}', false)" class="btn-secondary">Przywróć cel</button>`
-                    : `<button type="button" onclick="zakonczCel('${esc(c.id)}', true)" class="btn-secondary !text-[var(--c-spend)]">Zakończ cel</button>`}
-            </div>
+            ${akcjeSzczegolowCelu(c)}
         </div>`;
 }
 
-// „Zakończ cel” ustawia archived (8.3); zakończony cel nie łapie już nowych przelewów
+// ---- Usunięcie i zakończenie celu (potwierdzenie na ekranie, 10.2) ----
+
+function pytajOUsuniecieCelu(id) {
+    if (czyPotwierdzenie('cel-usun', id)) return anulujPotwierdzenieCelu(`cel-usun-${id}`); // drugi klik zamyka
+    otworzPotwierdzenie('cel-usun', id, odswiezCele);
+}
+
+function pytajOZakonczenieCelu(id) {
+    otworzPotwierdzenie('cel-zakoncz', id, odswiezCele);
+}
+
+function anulujPotwierdzenieCelu(idFokusu) {
+    zamknijPotwierdzenie(odswiezCele, idFokusu);
+}
+
+// „Zakończ cel” ustawia archived (8.3); zakończony cel nie łapie już nowych przelewów.
+// Zakończenie – po potwierdzeniu na ekranie; przywrócenie od razu (łatwo je cofnąć).
 async function zakonczCel(id, zakoncz = true) {
-    if (zakoncz && !confirm('Zakończyć ten cel? Zniknie z listy aktywnych celów i przestanie łapać nowe przelewy. Możesz go później przywrócić.')) return;
-    const { error } = await supabaseClient.from('goals').update({ archived: zakoncz }).eq('id', id);
-    if (error) {
-        pokazKomunikat('Nie udało się zapisać: ' + error.message);
-        return;
-    }
+    const zapisz = async () => {
+        const { error } = await supabaseClient.from('goals').update({ archived: zakoncz }).eq('id', id);
+        if (error) {
+            pokazKomunikat('Nie udało się zapisać: ' + error.message);
+            return false;
+        }
+        return true;
+    };
+    const udane = zakoncz ? await wykonajPotwierdzenie('cel-zakoncz', id, odswiezCele, zapisz) : await zapisz();
+    if (!udane) return;
     stan.otwartyCel = null;
     await pobierzDane();
     pokazKomunikat(zakoncz ? 'Zakończono cel' : 'Przywrócono cel');
+}
+
+// Wywoływane tylko przyciskiem „Usuń cel” w potwierdzeniu
+async function usunCel(id) {
+    const cel = stan.cele.find(c => String(c.id) === String(id));
+    const udane = await wykonajPotwierdzenie('cel-usun', id, odswiezCele, async () => {
+        const { error } = await supabaseClient.from('goals').delete().eq('id', id);
+        if (error) {
+            pokazKomunikat(komunikatBledu(error, 'Nie usunięto celu'));
+            return false;
+        }
+        return true;
+    });
+    if (!udane) return;
+    await pobierzDane();
+    pokazKomunikat(cel ? `Usunięto cel ${cel.name}` : 'Usunięto cel');
 }
 
 // =====================================================================
@@ -478,6 +556,7 @@ function pokazBladCelu(tresc) {
 }
 
 function otworzFormularzCelu(id = null) {
+    stan.potwierdzenie = null;
     document.getElementById('modal-cel').classList.remove('hidden');
     const cel = id ? stan.cele.find(x => String(x.id) === String(id)) : null;
     const terminCelu = cel && cel.deadline ? String(cel.deadline).slice(0, 7) : '';
@@ -570,11 +649,4 @@ async function zapiszCel(e) {
     zamknijFormularzCelu();
     await pobierzDane();
     pokazKomunikat(istniejacy ? 'Zapisano cel' : 'Dodano nowy cel');
-}
-
-async function usunCel(id) {
-    if (!confirm('Czy na pewno chcesz usunąć ten cel?')) return;
-    const { error } = await supabaseClient.from('goals').delete().eq('id', id);
-    if (!error) pobierzDane();
-    else pokazKomunikat(komunikatBledu(error, 'Nie usunięto celu'));
 }

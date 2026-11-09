@@ -23,6 +23,7 @@ let stan = {
     zakresTransakcji: null,       // { od, do } – zakres dat z Pulpitu albo null
     podzial: null,                // edytowany podział: { id, czesci: [{ category, kwota }] }
     szczegolyTransakcji: null,    // id transakcji z otwartym panelem „Notatka i paragon”
+    potwierdzenie: null,          // otwarte potwierdzenie na ekranie (potwierdzenia.js): { rodzaj, id, wTrakcie }
     miesiacWybrany: null,
     trybFiltraPulpit: 'miesiac', // 'miesiac' lub 'zakres'
     pulpitDataOd: '',
@@ -42,7 +43,8 @@ let stan = {
     ustawieniaStrona: 'menu',     // 'menu' | 'kategorie' | 'kategoria' | 'reguly' | 'kontoWspolne' | 'dane' | 'preferencje'
     ustawieniaKategoria: null,    // id kategorii otwartej w szczegółach (strona 'kategoria')
     ustawieniaPowrot: null,       // { strona, kategoria } – dokąd cofa „‹” po skrócie (np. z kategorii do jej reguł)
-    kolejnoscKategorii: false     // tryb „Zmień kolejność” na liście kategorii
+    kolejnoscKategorii: false,    // tryb „Zmień kolejność” na liście kategorii
+    wczytanieKopii: null          // „Wczytaj kopię” (kopia.js): wybrany plik, podgląd, wynik i dane do „Cofnij”
 };
 
 // Reguły posortowane od najnowszej (najnowsza pasująca wygrywa)
@@ -64,6 +66,7 @@ function wyczyscDaneBudzetu() {
         importy: null,
         wyborKategorii: null,
         szczegolyTransakcji: null,
+        potwierdzenie: null,
         filtrTransakcji: 'wszystkie',
         miesiacTransakcji: null,
         filtrKategorii: null,
@@ -73,7 +76,9 @@ function wyczyscDaneBudzetu() {
         otwartyCel: null,
         statKategoria: null,
         kategoriaDoUsuniecia: null,
-        kolejnoscKategorii: false
+        kolejnoscKategorii: false,
+        // Plik kopii i dane do „Cofnij wczytanie” dotyczą jednego budżetu i jednej osoby
+        wczytanieKopii: null
     });
     dynamiczneReguly = [];
 }

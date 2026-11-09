@@ -561,6 +561,12 @@
                         <button type="button" onclick="eksportujCSV()" class="btn-secondary w-full">Pobierz plik CSV</button>
                         <p class="text-[10px] text-[var(--muted)]">Kolumny A–F: Data, Kontrahent, Tytuł, Kwota, Typ, Kategoria / cel. Separator średnik – plik otwiera się wprost w polskim Excelu.</p>
                     </article>
+                    <!-- Wczytanie kopii (11.3): plik → podgląd → potwierdzenie → „Cofnij” (rysuje kopia.js) -->
+                    <article class="card space-y-3 span-all" aria-labelledby="ust-wczytaj-tytul">
+                        <h2 id="ust-wczytaj-tytul" class="font-semibold text-sm">Wczytaj kopię</h2>
+                        <div id="ust-wczytaj" class="space-y-3"></div>
+                        <input type="file" id="ust-wczytaj-plik" accept=".json,application/json" class="hidden" onchange="wybierzPlikKopii(this)" aria-label="Plik kopii zapasowej">
+                    </article>
                 </div>
             </section>
 
@@ -604,6 +610,7 @@
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/state.js"></script>
+    <script src="js/potwierdzenia.js"></script>
     <script src="js/rules.js"></script>
     <script src="js/calc.js"></script>
     <script src="js/wykresy.js"></script>
@@ -616,6 +623,7 @@
     <script src="js/views/cele.js"></script>
     <script src="js/views/statystyki.js"></script>
     <script src="js/views/oszczednosci.js"></script>
+    <script src="js/views/kopia.js"></script>
     <script src="js/views/ustawienia.js"></script>
     <script src="js/app.js"></script>
 </body>

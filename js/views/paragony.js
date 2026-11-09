@@ -19,10 +19,11 @@ function transakcjaPoId(id) {
     return stan.transakcje.find(t => String(t.id) === String(id)) || null;
 }
 
-// Panel pod wierszem transakcji (otwierany ikoną spinacza)
+// Panel pod wierszem transakcji (otwierany ikoną spinacza); zamyka podział i potwierdzenie usunięcia
 function otworzSzczegolyTransakcji(id) {
     stan.szczegolyTransakcji = stan.szczegolyTransakcji === String(id) ? null : String(id);
     stan.podzial = null;
+    stan.potwierdzenie = null;
     odswiezTransakcje();
 }
 

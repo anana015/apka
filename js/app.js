@@ -87,6 +87,10 @@ function zapamietanyBudzet() {
 
 async function zmienBudzet(budzet) {
     if (!BUDZETY[budzet] || budzet === stan.budzet) return;
+    if (czyWczytanieKopiiTrwa()) {
+        pokazKomunikat('Poczekaj, aż skończy się wczytywanie kopii');
+        return;
+    }
     if (budzet === 'osobisty' && stan.schematBudzetow === false) {
         pokazKomunikat('Budżet osobisty wymaga migracji bazy: uruchom w Supabase supabase/migracja_2026-11b_budzet_osobisty.sql');
         return;
@@ -184,6 +188,7 @@ function zmienZakladke(nazwa, opcje = {}) {
     stan.podzial = null;              // i niezapisany podział transakcji
     stan.szczegolyTransakcji = null;  // i panel notatki / paragonu
     stan.kategoriaDoUsuniecia = null; // i niepotwierdzone usunięcie kategorii
+    stan.potwierdzenie = null;        // i każde inne otwarte potwierdzenie (10.2)
     zamknijFormularzCelu();
 
     document.querySelectorAll('main > section').forEach(sec => sec.classList.add('hidden'));

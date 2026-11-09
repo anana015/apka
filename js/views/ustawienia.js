@@ -9,17 +9,8 @@
 //   poziom 3: szczegóły jednej kategorii – nazwa, kolor, limit, stała, oszczędność, użycie, usuwanie
 // „‹ …” u góry zawsze cofa o jeden poziom, zębatka w nagłówku otwiera menu (app.js).
 // Kategorie, reguły, kopia i eksport dotyczą otwartego budżetu (wspólnego albo osobistego),
-// preferencje – tej przeglądarki. „Wczytaj kopię” – osobny, kolejny etap.
+// preferencje – tej przeglądarki. Zapis i wczytanie kopii zapasowej: kopia.js.
 // =====================================================================
-
-const WERSJA_KOPII = 2;
-const TABELE_KOPII = [
-    { nazwa: 'transakcje', sort: 'booked_on' },
-    { nazwa: 'rules', sort: null },
-    { nazwa: 'goals', sort: null },
-    { nazwa: 'categories', sort: 'sort_order', opcjonalna: true },
-    { nazwa: 'imports', sort: 'imported_at', opcjonalna: true }
-];
 
 const NAZWY_TYPOW = {
     przychod: 'Przychód',
@@ -57,7 +48,7 @@ const MENU_USTAWIEN = [
       opis: () => liczbaIOdmiana(dynamiczneReguly.length, 'reguła', 'reguły', 'reguł') },
     { strona: 'kontoWspolne', grupa: 'budzet', ikona: 'arrow-left-right', opis: opisMenuKontaWspolnego, widoczna: czyKontoWspolneDostepne },
     { strona: 'dane', grupa: 'budzet', ikona: 'hard-drive-download',
-      opis: () => `${liczbaIOdmiana(stan.transakcje.length, 'transakcja', 'transakcje', 'transakcji')} · plik JSON i Excel` },
+      opis: () => `${liczbaIOdmiana(stan.transakcje.length, 'transakcja', 'transakcje', 'transakcji')} · zapis i wczytanie kopii, Excel` },
     { strona: 'preferencje', grupa: 'urzadzenie', ikona: 'sliders-horizontal', opis: opisMenuPreferencji }
 ];
 
@@ -273,6 +264,8 @@ function rysujDaneUstawien() {
     select.innerHTML = `<option value="">Wszystkie transakcje</option>` +
         miesiace.map(m => `<option value="${esc(m)}">${esc(nazwaMiesiaca(m))}</option>`).join('');
     if (miesiace.includes(poprzedni)) select.value = poprzedni;
+
+    rysujWczytanieKopii();
 }
 
 // =====================================================================
@@ -1028,66 +1021,6 @@ async function dodajRegule(e) {
     odswiezInterfejs();
     const n = trafieniaRegul()[dynamiczneReguly[0].id] || 0;
     pokazKomunikat(`Dodano regułę ${zapis} → ${kategoria}` + (n ? ` (${n} ${odmiana(n, 'transakcja', 'transakcje', 'transakcji')})` : ''));
-}
-
-// ---- Pobranie pliku --------------------------------------------------
-
-function pobierzPlik(nazwaPliku, tresc, typ) {
-    const blob = new Blob([tresc], { type: typ });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = nazwaPliku;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-function dzisIso() {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-// ---- Zapisz kopię (JSON) ---------------------------------------------
-
-async function zapiszKopie() {
-    const btn = document.getElementById('btn-zapisz-kopie');
-    btn.disabled = true;
-    btn.innerText = 'Pobieranie danych z chmury...';
-
-    try {
-        // Zawsze świeże dane z bazy, nie tylko to, co jest w pamięci ekranu.
-        // Tabele opcjonalne (przed migracją mogą nie istnieć) pomijamy bez błędu.
-        const tabele = {};
-        for (const { nazwa, sort, opcjonalna } of TABELE_KOPII) {
-            const { data, error } = await pobierzWszystkie(nazwa, sort);
-            if (error) {
-                if (opcjonalna && czyBrakSchematu(error)) continue;
-                throw new Error(`${nazwa}: ${error.message}`);
-            }
-            tabele[nazwa] = data;
-        }
-
-        const kopia = {
-            format: 'budzet-domowy-kopia',
-            version: WERSJA_KOPII,
-            budget: stan.budzet,
-            created_at: new Date().toISOString(),
-            counts: Object.fromEntries(Object.entries(tabele).map(([k, v]) => [k, v.length])),
-            settings: { docelowaStopa: docelowaStopa(), zapamietajPodobne: zapamietujPodobne() },
-            tables: tabele
-        };
-
-        // Nazwa pliku mówi, z którego budżetu jest kopia
-        pobierzPlik(`budzet-${stan.budzet}-kopia-${dzisIso()}.json`, JSON.stringify(kopia, null, 2), 'application/json');
-        pokazKomunikat('Kopia zapasowa zapisana');
-    } catch (err) {
-        pokazKomunikat('Nie udało się zapisać kopii: ' + err.message);
-    } finally {
-        btn.disabled = false;
-        btn.innerText = 'Zapisz kopię';
-    }
 }
 
 // ---- Eksport do Excela (CSV) -----------------------------------------
