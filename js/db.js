@@ -17,12 +17,12 @@ try {
 // (migracja supabase/migracja_2026-11b_budzet_osobisty.sql). Żeby żaden ekran nie musiał
 // o tym pamiętać, zawężenie robimy w jednym miejscu: supabaseClient.from(tabela) dla tabel
 // budżetu zwraca zapytania ograniczone do otwartego budżetu, a insert/upsert dopisują owner_id.
-// RLS w bazie i tak nie pokaże drugiej osobie cudzego budżetu osobistego – to zawężenie
-// oddziela budżet wspólny od własnego osobistego na ekranie.
+// O tym, KTO widzi który budżet, decydują zasady RLS w bazie (migracja 2026-11f: budżet
+// wspólny tylko dla osób z listy) – to zawężenie oddziela budżety na ekranie.
 // Przed migracją (brak kolumny owner_id) wszystko działa jak dawniej: tylko budżet wspólny.
 // =====================================================================
 
-const TABELE_BUDZETU = ['transakcje', 'rules', 'goals', 'categories', 'imports'];
+const TABELE_BUDZETU = ['transakcje', 'rules', 'goals', 'categories', 'imports', 'ustawienia_budzetu'];
 
 function wlascicielBudzetu() {
     return stan.budzet === 'osobisty' ? stan.uzytkownikId : null;
@@ -63,6 +63,46 @@ async function sprawdzSchematBudzetow() {
     return stan.schematBudzetow;
 }
 
+// =====================================================================
+// DOSTĘP DO BUDŻETU WSPÓLNEGO (migracja 2026-11f)
+// Budżet wspólny widzą tylko osoby z listy (tabela budzet_czlonkowie + zasady RLS).
+// stan.dostepWspolny:
+//   { schemat: true, czlonek, maCzlonkow, maDane, czlonkowie: [{ user_id, email, dodano, to_ja }] }
+//   { schemat: false, czlonek: true, … } – baza bez migracji 2026-11f: jak dawniej, budżet
+//     wspólny widzi każde zalogowane konto (Ustawienia podpowiadają migrację)
+//   null – jeszcze nie sprawdzono (albo pierwszy odczyt nie doszedł do skutku)
+// Sprawdzamy przy każdym pobraniu danych: osoba usunięta z listy na innym urządzeniu
+// po odświeżeniu przechodzi do budżetu osobistego.
+// =====================================================================
+
+function przeksztalcStanDostepu(d) {
+    return {
+        schemat: true,
+        czlonek: !!(d && d.czlonek),
+        maCzlonkow: !!(d && d.ma_czlonkow),
+        maDane: !!(d && d.ma_dane),
+        czlonkowie: d && Array.isArray(d.czlonkowie) ? d.czlonkowie : []
+    };
+}
+
+// Zwraca true, gdy stan jest aktualny; przy błędzie sieci zostawia poprzedni stan
+async function sprawdzDostepWspolny() {
+    const { data, error } = await supabaseClient.rpc('budzet_wspolny_stan');
+    if (!error) {
+        stan.dostepWspolny = przeksztalcStanDostepu(data);
+        return true;
+    }
+    if (czyBrakSchematu(error)) {
+        stan.dostepWspolny = { schemat: false, czlonek: true, maCzlonkow: true, maDane: true, czlonkowie: [] };
+        return true;
+    }
+    return false;
+}
+
+function czyDostepDoWspolnego() {
+    return !!(stan.dostepWspolny && stan.dostepWspolny.czlonek);
+}
+
 // Supabase (PostgREST) zwraca najwyżej ~1000 wierszy na zapytanie, więc pobieramy stronami.
 // Kończymy dopiero na pustej stronie – działa też, gdy serwer ma niższy limit niż ROZMIAR.
 const ROZMIAR_STRONY = 1000;
@@ -81,11 +121,12 @@ async function pobierzWszystkie(tabela, kolumnaSortowania = null, rosnaco = true
     return { data: wynik, error: null };
 }
 
-// Brak tabeli lub kolumny w bazie (migracja nieuruchomiona)
+// Brak tabeli, kolumny lub funkcji w bazie (migracja nieuruchomiona)
 function czyBrakSchematu(error) {
     if (!error) return false;
     const kod = String(error.code || '');
-    return kod === '42P01' || kod === '42703' || kod === 'PGRST204' || kod === 'PGRST205' ||
+    return kod === '42P01' || kod === '42703' || kod === '42883' ||
+        kod === 'PGRST202' || kod === 'PGRST204' || kod === 'PGRST205' ||
         /schema cache|does not exist|could not find/i.test(error.message || '');
 }
 
@@ -125,6 +166,14 @@ async function pobierzImporty() {
     return error ? null : (data || []);
 }
 
+// Ustawienia otwartego budżetu (jeden wiersz, np. subkonto wypłat ze skarbonek).
+// dostepne = false: brak tabeli (migracja 2026-11f nieuruchomiona) – strona ustawień ukryta.
+async function pobierzUstawieniaBudzetu() {
+    const { data, error } = await supabaseClient.from('ustawienia_budzetu').select('*').limit(1);
+    if (error) return { ustawienia: null, dostepne: !czyBrakSchematu(error) };
+    return { ustawienia: (data && data[0]) || null, dostepne: true };
+}
+
 // Numer ostatniego pobrania: odpowiedź spóźniona po przełączeniu budżetu jest pomijana
 let numerPobrania = 0;
 
@@ -137,9 +186,22 @@ async function pobierzDane() {
         if (nr === numerPobrania) status.innerText = 'Błąd połączenia z bazą';
         return;
     }
+    // Kto ma dostęp do budżetu wspólnego – bez tej wiedzy niczego nie pokazujemy
+    if (!(await sprawdzDostepWspolny()) && !stan.dostepWspolny) {
+        if (nr === numerPobrania) status.innerText = 'Błąd połączenia z bazą';
+        return;
+    }
+    if (nr !== numerPobrania) return;
     if (!stan.schematBudzetow && stan.budzet !== 'wspolny') {
         stan.budzet = 'wspolny'; // budżet osobisty wymaga migracji
         odswiezPrzelacznikBudzetu();
+    } else if (stan.budzet === 'wspolny' && !czyDostepDoWspolnego()) {
+        // Osoba spoza listy (albo usunięta z listy) pracuje w swoim budżecie osobistym
+        stan.budzet = 'osobisty';
+        wyczyscDaneBudzetu();
+        odswiezPrzelacznikBudzetu();
+    } else {
+        odswiezPrzelacznikBudzetu(); // lista osób mogła się zmienić (przełącznik, menu)
     }
 
     const resTrans = await pobierzWszystkie('transakcje', 'booked_on', false);
@@ -151,11 +213,12 @@ async function pobierzDane() {
 
     // Pozostałe tabele są niezależne – pobieramy je równolegle
     const budzet = stan.budzet;
-    const [resRules, resGoals, kategorie, importy] = await Promise.all([
+    const [resRules, resGoals, kategorie, importy, ustawienia] = await Promise.all([
         pobierzWszystkie('rules'),
         pobierzWszystkie('goals'),
         pobierzKategorie(),
-        pobierzImporty()
+        pobierzImporty(),
+        pobierzUstawieniaBudzetu()
     ]);
     if (nr !== numerPobrania || budzet !== stan.budzet) return;
 
@@ -168,6 +231,8 @@ async function pobierzDane() {
     stan.kategorie = kategorie.kategorie;
     stan.kategorieZBazy = kategorie.zBazy;
     stan.importy = importy;
+    stan.ustawieniaBudzetu = ustawienia.ustawienia;
+    stan.ustawieniaBudzetuDostepne = ustawienia.dostepne;
 
     status.innerText = `Połączono · ${nazwaBudzetu()}`;
 

@@ -5,11 +5,12 @@
 //
 // Ustawienia są „poziomowe” – szczegóły widać dopiero po wejściu głębiej:
 //   poziom 1: menu – każda pozycja z krótkim podsumowaniem („21 kategorii · 3 z limitem”)
-//   poziom 2: strona – Kategorie, Reguły, Przelewy na konto wspólne, Kopia i eksport, Preferencje
+//   poziom 2: strona – Kategorie, Reguły, Przelewy na konto wspólne, Subkonto wypłat, Kopia i eksport,
+//             Preferencje, Osoby w budżecie wspólnym, Zmiana hasła (dwie ostatnie: konto.js)
 //   poziom 3: szczegóły jednej kategorii – nazwa, kolor, limit, stała, oszczędność, użycie, usuwanie
 // „‹ …” u góry zawsze cofa o jeden poziom, zębatka w nagłówku otwiera menu (app.js).
 // Kategorie, reguły, kopia i eksport dotyczą otwartego budżetu (wspólnego albo osobistego),
-// preferencje – tej przeglądarki. Zapis i wczytanie kopii zapasowej: kopia.js.
+// preferencje – tej przeglądarki, grupa „Konto” – zalogowanej osoby. Kopia zapasowa: kopia.js.
 // =====================================================================
 
 const NAZWY_TYPOW = {
@@ -37,19 +38,25 @@ const STRONY_USTAWIEN = {
     kategoria: { tytul: 'Kategoria', rodzic: 'kategorie' },
     reguly: { tytul: 'Reguły', rodzic: 'menu' },
     kontoWspolne: { tytul: 'Przelewy na konto wspólne', rodzic: 'menu' },
+    subkonto: { tytul: 'Subkonto wypłat', rodzic: 'menu' },
     dane: { tytul: 'Kopia i eksport', rodzic: 'menu' },
-    preferencje: { tytul: 'Preferencje', rodzic: 'menu' }
+    preferencje: { tytul: 'Preferencje', rodzic: 'menu' },
+    czlonkowie: { tytul: 'Osoby w budżecie wspólnym', rodzic: 'menu' },
+    haslo: { tytul: 'Zmiana hasła', rodzic: 'menu' }
 };
 
-// Pozycje menu: grupa „budzet” (otwarty budżet) albo „urzadzenie” (ta przeglądarka)
+// Pozycje menu: grupa „budzet” (otwarty budżet), „urzadzenie” (ta przeglądarka) albo „konto” (zalogowana osoba)
 const MENU_USTAWIEN = [
     { strona: 'kategorie', grupa: 'budzet', ikona: 'tags', opis: opisMenuKategorii },
     { strona: 'reguly', grupa: 'budzet', ikona: 'list-checks',
       opis: () => liczbaIOdmiana(dynamiczneReguly.length, 'reguła', 'reguły', 'reguł') },
     { strona: 'kontoWspolne', grupa: 'budzet', ikona: 'arrow-left-right', opis: opisMenuKontaWspolnego, widoczna: czyKontoWspolneDostepne },
+    { strona: 'subkonto', grupa: 'budzet', ikona: 'piggy-bank', opis: () => opisMenuSubkonta(), widoczna: () => czySubkontoDostepne() },
     { strona: 'dane', grupa: 'budzet', ikona: 'hard-drive-download',
       opis: () => `${liczbaIOdmiana(stan.transakcje.length, 'transakcja', 'transakcje', 'transakcji')} · zapis i wczytanie kopii, Excel` },
-    { strona: 'preferencje', grupa: 'urzadzenie', ikona: 'sliders-horizontal', opis: opisMenuPreferencji }
+    { strona: 'preferencje', grupa: 'urzadzenie', ikona: 'sliders-horizontal', opis: opisMenuPreferencji },
+    { strona: 'czlonkowie', grupa: 'konto', ikona: 'users', opis: () => opisMenuCzlonkow() },
+    { strona: 'haslo', grupa: 'konto', ikona: 'key-round', opis: () => 'Nowe hasło do logowania' }
 ];
 
 const RYSOWANIE_STRON_USTAWIEN = {
@@ -59,7 +66,10 @@ const RYSOWANIE_STRON_USTAWIEN = {
     kategoria: rysujSzczegolyKategorii,
     reguly: rysujRegulyUstawien,
     kontoWspolne: rysujKontoWspolne,
-    dane: rysujDaneUstawien
+    subkonto: () => rysujSubkonto(),
+    dane: rysujDaneUstawien,
+    czlonkowie: () => rysujCzlonkow(),
+    haslo: () => rysujZmianeHasla()
 };
 
 const KLASA_WIERSZA_MENU = 'w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-left hover:bg-[var(--bg)] transition';
@@ -137,6 +147,7 @@ function sprawdzStroneUstawien() {
     if (!STRONY_USTAWIEN[strona]) stan.ustawieniaStrona = 'menu';
     else if (strona === 'kategoria' && !kategoriaPoId(stan.ustawieniaKategoria)) stan.ustawieniaStrona = 'kategorie';
     else if (strona === 'kontoWspolne' && !czyKontoWspolneDostepne()) stan.ustawieniaStrona = 'menu';
+    else if (strona === 'subkonto' && !czySubkontoDostepne()) stan.ustawieniaStrona = 'menu';
     if (stan.ustawieniaPowrot && stan.ustawieniaPowrot.strona === 'kategoria' && !kategoriaPoId(stan.ustawieniaPowrot.kategoria)) {
         stan.ustawieniaPowrot = null;
     }
@@ -173,7 +184,7 @@ function wstawHtml(el, html, zPamiecia = false) {
     if (zPamiecia && ostatniHtml.get(el) === html) return false;
     const aktywny = document.activeElement;
     const idFokusu = aktywny && aktywny.id && el.contains(aktywny) ? aktywny.id : null;
-    const wpisywany = idFokusu && (aktywny.tagName === 'TEXTAREA' || /^(text|search|number)$/.test(aktywny.type || ''));
+    const wpisywany = idFokusu && (aktywny.tagName === 'TEXTAREA' || /^(text|search|number|email)$/.test(aktywny.type || ''));
     const tekst = wpisywany ? { wartosc: aktywny.value, start: aktywny.selectionStart, koniec: aktywny.selectionEnd } : null;
 
     el.innerHTML = html;
@@ -233,7 +244,7 @@ function wierszMenuUstawien(pozycja) {
 function rysujMenuUstawien() {
     document.getElementById('ust-menu-budzet').innerText = nazwaBudzetu();
     let zmiana = false;
-    ['budzet', 'urzadzenie'].forEach(grupa => {
+    ['budzet', 'urzadzenie', 'konto'].forEach(grupa => {
         const html = MENU_USTAWIEN
             .filter(p => p.grupa === grupa && (!p.widoczna || p.widoczna()))
             .map(wierszMenuUstawien).join('');
@@ -886,6 +897,60 @@ async function zapiszKontoWspolne(e) {
     await pobierzDane();
     const ile = przelewyNaKonto(numer).length;
     pokazKomunikat(`Zapisano: przelewy na konto wspólne → ${KATEGORIA_PRZELEW_WSPOLNE}` + (ile ? ` (${ile} już zaimportowanych)` : ''));
+}
+
+// =====================================================================
+// SUBKONTO WYPŁAT ZE SKARBONEK (otwartego budżetu)
+// Numer jest w tabeli ustawienia_budzetu (migracja 2026-11f), nie w kodzie – widzą go tylko
+// osoby z dostępem do budżetu. Używa go rules.js: kontoWyplatZeSkarbonek().
+// =====================================================================
+
+function czySubkontoDostepne() {
+    return !!stan.ustawieniaBudzetuDostepne;
+}
+
+function opisMenuSubkonta() {
+    const numer = kontoWyplatZeSkarbonek();
+    return numer ? `Konto …${numer.slice(-4)} · wypłaty z celów` : 'Nie ustawiono';
+}
+
+// Wpływy z danego numeru – tak samo jak w znajdzCel (rules.js)
+function wplywyZKonta(numer) {
+    if (!numer) return [];
+    return stan.transakcje.filter(t => t.amount_gr > 0 && (czystyNumer(t.account_number).includes(numer)
+        || czystyNumer(`${t.counterparty || ''} ${t.title || ''}`).includes(numer)));
+}
+
+function rysujSubkonto() {
+    document.getElementById('sub-budzet').innerText = `· ${nazwaBudzetu()}`;
+    const numer = kontoWyplatZeSkarbonek();
+    const pole = document.getElementById('ust-subkonto');
+    if (document.activeElement !== pole) pole.value = numer;
+    document.getElementById('ust-subkonto-info').innerText = numer
+        ? `Zaimportowane wpływy z tego konta: ${wplywyZKonta(numer).length}. Pole puste + „Zapisz” usuwa numer.`
+        : 'Bez numeru wypłaty ze skarbonek rozpoznajemy tylko po słowach wypłat ustawionych w celach.';
+}
+
+async function zapiszSubkontoWyplat(e) {
+    e.preventDefault();
+    const numer = czystyNumer(document.getElementById('ust-subkonto').value).replace(/^PL/i, '');
+    if (numer && !/^\d{26}$/.test(numer)) return pokazKomunikat('Podaj 26 cyfr numeru subkonta (bez „PL”).');
+    const obecne = stan.ustawieniaBudzetu;
+    if (numer === kontoWyplatZeSkarbonek()) return pokazKomunikat('Bez zmian');
+
+    const btn = document.getElementById('btn-zapisz-subkonto');
+    btn.disabled = true;
+    const zmiana = { konto_wyplat: numer || null, zmieniono: new Date().toISOString() };
+    const { error } = obecne && obecne.id != null
+        ? await supabaseClient.from('ustawienia_budzetu').update(zmiana).eq('id', obecne.id)
+        : await supabaseClient.from('ustawienia_budzetu').insert([zmiana]);
+    btn.disabled = false;
+    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie zapisano numeru'));
+
+    await pobierzDane();
+    pokazKomunikat(numer
+        ? `Zapisano subkonto wypłat …${numer.slice(-4)}` + (wplywyZKonta(numer).length ? ` (${wplywyZKonta(numer).length} wpływów to teraz wypłaty z celów)` : '')
+        : 'Usunięto numer subkonta wypłat');
 }
 
 // =====================================================================

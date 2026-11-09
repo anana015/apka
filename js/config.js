@@ -3,19 +3,20 @@
 // =====================================================================
 
 const SUPABASE_URL = 'https://ggtvsotksmvepqdtsidb.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_UHAZejqBYpSmUwbuCOb3hA_JfbUuZpB'; // klucz publiczny (anon)
+// Klucz publishable (dawniej „anon”) MOŻE być jawny – dane chronią zasady RLS w bazie.
+// Nigdy nie wpisuj tu klucza secret / service_role: omija RLS i daje dostęp do wszystkich danych.
+const SUPABASE_ANON_KEY = 'sb_publishable_UHAZejqBYpSmUwbuCOb3hA_JfbUuZpB';
 
-// Wspólne subkonto, z którego idą wypłaty ze WSZYSTKICH skarbonek na konto główne.
-// Każdy wpływ z tego numeru to wypłata z oszczędności (nigdy przychód).
-const KONTO_WYPLAT_ZE_SKARBONEK = '79124045461111001148075657';
+// Numer subkonta wypłat ze skarbonek NIE jest w kodzie: ustawia się go w aplikacji
+// (Ustawienia → Subkonto wypłat) i trafia do tabeli ustawienia_budzetu (migracja 2026-11f).
 
 const POMIN = 'Pomiń';
 const PREFIKS_CELU = 'SKARBONKA:';
 
 // Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli, kolumny lub funkcji
 // (najnowszy skrypt; wymaga wcześniejszych: migracja_2026-11.sql, 2026-11b_budzet_osobisty,
-// 2026-11c_kategorie_oszczednosci, 2026-11d_notatki_paragony)
-const PLIK_MIGRACJI = 'supabase/migracja_2026-11e_wczytaj_kopie.sql';
+// 2026-11c_kategorie_oszczednosci, 2026-11d_notatki_paragony, 2026-11e_wczytaj_kopie)
+const PLIK_MIGRACJI = 'supabase/migracja_2026-11f_dostep_i_ustawienia.sql';
 
 // Kategorie startowe budżetu wspólnego. Przy pierwszym uruchomieniu trafiają do tabeli
 // categories, potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.

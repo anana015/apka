@@ -8,14 +8,13 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>Mój Budżet Domowy</title>
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS (jedyny skrypt spoza repozytorium – patrz README.md, „Bezpieczeństwo”) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Supabase JS Client -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- PapaParse do obsługi CSV -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-    <!-- Ikony Lucide -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Biblioteki w repozytorium, w stałych wersjach (js/vendor/README.md): klient Supabase
+         widzi sesję logowania, więc nie ładujemy go z zewnętrznego serwera w wersji „najnowszej” -->
+    <script src="js/vendor/supabase-js-2.119.0.js"></script>
+    <script src="js/vendor/papaparse-5.4.1.min.js"></script>
+    <script src="js/vendor/lucide-1.70.0.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
@@ -31,21 +30,52 @@
             </div>
             <div>
                 <h1 class="text-2xl font-bold">Budżet Domowy</h1>
-                <p class="text-xs text-[var(--muted)] mt-1">Zaloguj się do budżetu wspólnego i osobistego</p>
+                <p id="login-podtytul" class="text-xs text-[var(--muted)] mt-1">Zaloguj się do budżetu wspólnego i osobistego</p>
             </div>
 
+            <!-- Etapy ekranu (konto.js: pokazEtapLogowania): logowanie → „Nie pamiętasz hasła?” → nowe hasło z linku -->
             <form id="form-login" onsubmit="obsluzLogowanie(event)" class="space-y-4 text-left">
                 <div>
                     <label for="login-email" class="field-label">Adres e-mail</label>
-                    <input type="email" id="login-email" required autocomplete="email" placeholder="twoj@email.pl" class="input">
+                    <input type="email" id="login-email" required autocomplete="username" placeholder="twoj@email.pl" class="input">
                 </div>
                 <div>
                     <label for="login-password" class="field-label">Hasło</label>
                     <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" class="input">
                 </div>
-                <div id="login-error" role="alert" class="hidden text-xs text-[var(--c-spend)] p-3 rounded-xl border border-current"></div>
                 <button type="submit" id="btn-login" class="btn-primary">Zaloguj się</button>
+                <button type="button" id="btn-nie-pamietam" onclick="pokazEtapLogowania('reset', { fokus: true })" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">Nie pamiętasz hasła?</button>
             </form>
+
+            <form id="form-reset" onsubmit="wyslijLinkResetu(event)" class="hidden space-y-4 text-left" novalidate>
+                <p class="text-xs text-[var(--muted)]">Podaj adres e-mail konta. Wyślemy link, pod którym ustawisz nowe hasło.</p>
+                <div>
+                    <label for="reset-email" class="field-label">Adres e-mail</label>
+                    <input type="email" id="reset-email" required autocomplete="email" placeholder="twoj@email.pl" class="input">
+                </div>
+                <button type="submit" id="btn-reset" class="btn-primary">Wyślij link</button>
+                <button type="button" onclick="pokazEtapLogowania('logowanie', { fokus: true })" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">‹ Wróć do logowania</button>
+            </form>
+
+            <form id="form-nowe-haslo" onsubmit="zapiszNoweHasloZLinku(event)" class="hidden space-y-4 text-left" novalidate>
+                <p class="text-xs text-[var(--muted)]">Ustaw nowe hasło dla <strong id="nowe-haslo-email"></strong>.</p>
+                <!-- Dla menedżerów haseł: do którego konta należy nowe hasło -->
+                <input type="email" id="nowe-haslo-login" autocomplete="username" class="hidden" tabindex="-1" aria-hidden="true" readonly>
+                <div>
+                    <label for="nowe-haslo" class="field-label">Nowe hasło</label>
+                    <input type="password" id="nowe-haslo" required minlength="8" maxlength="72" autocomplete="new-password" class="input" aria-describedby="nowe-haslo-wskazowka">
+                    <p id="nowe-haslo-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 8 znaków. Nie używaj hasła z innych serwisów.</p>
+                </div>
+                <div>
+                    <label for="nowe-haslo-2" class="field-label">Powtórz nowe hasło</label>
+                    <input type="password" id="nowe-haslo-2" required minlength="8" maxlength="72" autocomplete="new-password" class="input">
+                </div>
+                <button type="submit" id="btn-nowe-haslo" class="btn-primary">Zapisz hasło</button>
+                <button type="button" onclick="wyloguj()" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">Anuluj i wyloguj</button>
+            </form>
+
+            <div id="login-error" role="alert" class="hidden text-xs text-left text-[var(--c-spend)] p-3 rounded-xl border border-current"></div>
+            <div id="login-info" role="status" class="hidden text-xs text-left p-3 rounded-xl border border-[var(--border)]"></div>
         </div>
     </div>
 
@@ -442,13 +472,14 @@
                             <h2 id="ust-menu-urzadzenie" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1 pb-1">Na tym urządzeniu</h2>
                             <ul id="ust-menu-urzadzenie-lista" class="divide-y divide-[var(--border)]"></ul>
                         </nav>
-                        <article class="card flex items-center justify-between gap-3">
-                            <div class="min-w-0">
-                                <h2 class="font-semibold text-sm">Konto</h2>
-                                <p id="ust-konto" class="text-xs text-[var(--muted)] truncate"></p>
+                        <nav class="card !p-2" aria-labelledby="ust-menu-konto">
+                            <h2 id="ust-menu-konto" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1">Konto</h2>
+                            <p id="ust-konto" class="text-xs text-[var(--muted)] truncate px-2 pb-1"></p>
+                            <ul id="ust-menu-konto-lista" class="divide-y divide-[var(--border)]"></ul>
+                            <div class="px-2 pt-2 pb-1">
+                                <button type="button" onclick="wyloguj()" class="btn-secondary w-full">Wyloguj</button>
                             </div>
-                            <button type="button" onclick="wyloguj()" class="btn-secondary whitespace-nowrap">Wyloguj</button>
-                        </article>
+                        </nav>
                     </div>
                 </div>
 
@@ -544,13 +575,27 @@
                     </article>
                 </div>
 
+                <!-- POZIOM 2: SUBKONTO WYPŁAT ZE SKARBONEK otwartego budżetu (tabela ustawienia_budzetu, ustawienia.js) -->
+                <div class="ust-strona contents hidden" data-strona="subkonto">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Subkonto wypłat ze skarbonek <span id="sub-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                        <p class="text-[10px] text-[var(--muted)]">Numer rachunku, z którego bank przelewa wypłaty z celów na konto główne. Każdy wpływ z tego numeru liczy się jako wypłata z oszczędności, a nie przychód – także w już zaimportowanych transakcjach. Numer jest zapisany w Supabase i widzą go tylko osoby z dostępem do tego budżetu; nie ma go w kodzie aplikacji.</p>
+                        <form onsubmit="zapiszSubkontoWyplat(event)" class="flex gap-2">
+                            <label for="ust-subkonto" class="sr-only">Numer subkonta wypłat</label>
+                            <input type="text" id="ust-subkonto" inputmode="numeric" autocomplete="off" placeholder="26 cyfr numeru subkonta" class="input kwota">
+                            <button type="submit" id="btn-zapisz-subkonto" class="btn-secondary whitespace-nowrap">Zapisz</button>
+                        </form>
+                        <p id="ust-subkonto-info" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                    </article>
+                </div>
+
                 <!-- POZIOM 2: KOPIA I EKSPORT otwartego budżetu -->
                 <div class="ust-strona contents hidden" data-strona="dane">
                     <article class="card space-y-3">
                         <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
                         <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
                         <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
-                        <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami i kategoriami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                        <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami, kategoriami i ustawieniami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
                     </article>
                     <article class="card space-y-3">
                         <h2 class="font-semibold text-sm">Eksport do Excela</h2>
@@ -566,6 +611,42 @@
                         <h2 id="ust-wczytaj-tytul" class="font-semibold text-sm">Wczytaj kopię</h2>
                         <div id="ust-wczytaj" class="space-y-3"></div>
                         <input type="file" id="ust-wczytaj-plik" accept=".json,application/json" class="hidden" onchange="wybierzPlikKopii(this)" aria-label="Plik kopii zapasowej">
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: OSOBY W BUDŻECIE WSPÓLNYM (migracja 2026-11f; treść rysuje konto.js) -->
+                <div class="ust-strona contents hidden" data-strona="czlonkowie">
+                    <article class="card space-y-3 span-all max-w-2xl w-full" aria-labelledby="czl-tytul">
+                        <h2 id="czl-tytul" class="font-semibold text-sm">Osoby w budżecie wspólnym</h2>
+                        <div id="czl-tresc" class="space-y-3"></div>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: ZMIANA HASŁA (konto.js) -->
+                <div class="ust-strona contents hidden" data-strona="haslo">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Zmiana hasła</h2>
+                        <p id="haslo-konto" class="text-[11px] text-[var(--muted)]"></p>
+                        <form id="form-zmiana-hasla" onsubmit="zmienHaslo(event)" class="space-y-3" novalidate>
+                            <!-- Dla menedżerów haseł: do którego konta należy hasło -->
+                            <input type="email" id="haslo-login" autocomplete="username" class="hidden" tabindex="-1" aria-hidden="true" readonly>
+                            <div>
+                                <label for="haslo-obecne" class="field-label">Obecne hasło</label>
+                                <input type="password" id="haslo-obecne" required autocomplete="current-password" class="input">
+                            </div>
+                            <div>
+                                <label for="haslo-nowe" class="field-label">Nowe hasło</label>
+                                <input type="password" id="haslo-nowe" required minlength="8" maxlength="72" autocomplete="new-password" class="input" aria-describedby="haslo-nowe-wskazowka">
+                                <p id="haslo-nowe-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 8 znaków. Nie używaj hasła z innych serwisów.</p>
+                            </div>
+                            <div>
+                                <label for="haslo-nowe-2" class="field-label">Powtórz nowe hasło</label>
+                                <input type="password" id="haslo-nowe-2" required minlength="8" maxlength="72" autocomplete="new-password" class="input">
+                            </div>
+                            <p id="haslo-blad" role="alert" class="hidden text-xs text-[var(--c-spend)]"></p>
+                            <button type="submit" id="btn-zmien-haslo" class="btn-primary !w-auto px-6">Zmień hasło</button>
+                        </form>
+                        <p class="text-[11px] text-[var(--muted)]">Nie pamiętasz obecnego hasła? Wyloguj się i na ekranie logowania wybierz „Nie pamiętasz hasła?” – dostaniesz link na e-mail.</p>
                     </article>
                 </div>
             </section>
@@ -624,6 +705,7 @@
     <script src="js/views/statystyki.js"></script>
     <script src="js/views/oszczednosci.js"></script>
     <script src="js/views/kopia.js"></script>
+    <script src="js/views/konto.js"></script>
     <script src="js/views/ustawienia.js"></script>
     <script src="js/app.js"></script>
 </body>

@@ -14,10 +14,13 @@ function kategoriaReczna(t) {
     return k && !k.startsWith(PREFIKS_CELU) ? k : null;
 }
 
-// Wspólne subkonto wypłat ze skarbonek dotyczy tylko budżetu wspólnego (konto w Pekao).
-// W budżecie osobistym wypłaty z celów rozpoznajemy po numerze subkonta i słowach wypłat.
+// Subkonto, z którego bank przelewa wypłaty ze WSZYSTKICH skarbonek otwartego budżetu.
+// Każdy wpływ z tego numeru to wypłata z oszczędności (nigdy przychód).
+// Numer nie jest w kodzie: ustawia się go w Ustawieniach → Subkonto wypłat (tabela
+// ustawienia_budzetu, migracja 2026-11f) – osobno dla budżetu wspólnego i osobistego.
 function kontoWyplatZeSkarbonek() {
-    return stan.budzet === 'wspolny' ? KONTO_WYPLAT_ZE_SKARBONEK : '';
+    const numer = stan.ustawieniaBudzetu && stan.ustawieniaBudzetu.konto_wyplat;
+    return numer ? czystyNumer(numer) : '';
 }
 
 // Wypłata: cel po słowach kluczowych wypłat (keywords_out) w tytule / kontrahencie

@@ -14,6 +14,10 @@ let stan = {
     uzytkownikId: null,           // auth.uid() zalogowanej osoby
     uzytkownikEmail: '',
     schematBudzetow: null,        // null = nie sprawdzono, false = brak migracji (tylko wspólny), true = OK
+    // Kto ma dostęp do budżetu wspólnego (db.js: sprawdzDostepWspolny, migracja 2026-11f):
+    // { schemat, czlonek, maCzlonkow, maDane, czlonkowie: [{ user_id, email, dodano, to_ja }] } albo null
+    dostepWspolny: null,
+    odzyskiwanieHasla: false,     // otwarto link „ustaw nowe hasło” z e-maila (konto.js)
 
     zakladka: 'pulpit',
     poprzedniaZakladka: 'pulpit', // skąd otwarto Ustawienia
@@ -38,9 +42,11 @@ let stan = {
     kategoriaDoUsuniecia: null,   // id kategorii z otwartym potwierdzeniem usunięcia
     wyborKategorii: null,         // Set nazw zaznaczonych w „Wybierz kategorie z listy” albo null (zamknięte)
     importy: null,                // historia importów (null = brak tabeli imports)
+    ustawieniaBudzetu: null,      // wiersz ustawienia_budzetu otwartego budżetu: { id, konto_wyplat, zmieniono } albo null
+    ustawieniaBudzetuDostepne: false, // czy baza ma tabelę ustawienia_budzetu (migracja 2026-11f)
 
     // Poziomy Ustawień (ustawienia.js): menu → strona → szczegóły kategorii
-    ustawieniaStrona: 'menu',     // 'menu' | 'kategorie' | 'kategoria' | 'reguly' | 'kontoWspolne' | 'dane' | 'preferencje'
+    ustawieniaStrona: 'menu',     // klucz STRONY_USTAWIEN (ustawienia.js), np. 'kategorie', 'subkonto', 'czlonkowie', 'haslo'
     ustawieniaKategoria: null,    // id kategorii otwartej w szczegółach (strona 'kategoria')
     ustawieniaPowrot: null,       // { strona, kategoria } – dokąd cofa „‹” po skrócie (np. z kategorii do jej reguł)
     kolejnoscKategorii: false,    // tryb „Zmień kolejność” na liście kategorii
@@ -64,6 +70,7 @@ function wyczyscDaneBudzetu() {
         kategorie: kategorieDomyslne(stan.budzet),
         kategorieZBazy: false,
         importy: null,
+        ustawieniaBudzetu: null,
         wyborKategorii: null,
         szczegolyTransakcji: null,
         potwierdzenie: null,

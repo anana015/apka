@@ -7,10 +7,12 @@ async function sprawdzSesje() {
     try {
         const { data: { session }, error } = await supabaseClient.auth.getSession();
         if (error) throw error;
-        if (session) pokazAplikacje(session.user);
-        else pokazEkranLogowania();
+        // Link „ustaw nowe hasło” z e-maila: sesja jest, ale najpierw formularz nowego hasła
+        if (session && (LINK_Z_EMAILA.reset || stan.odzyskiwanieHasla)) pokazNoweHaslo(session.user);
+        else if (session) pokazAplikacje(session.user);
+        else pokazEkranLogowania({ blad: bladLinkuZEmaila() });
     } catch (err) {
-        pokazEkranLogowania();
+        pokazEkranLogowania({ blad: bladLinkuZEmaila() });
     }
 }
 
@@ -18,35 +20,42 @@ async function obsluzLogowanie(e) {
     e.preventDefault();
     const email = document.getElementById('login-email').value;
     const password = document.getElementById('login-password').value;
-    const errorBox = document.getElementById('login-error');
     const btn = document.getElementById('btn-login');
 
     btn.innerText = 'Logowanie...';
     btn.disabled = true;
-    errorBox.classList.add('hidden');
+    ustawBladLogowania('');
+    ustawInfoLogowania('');
 
     try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
         if (error) {
-            errorBox.innerText = 'Błędny e-mail lub hasło!';
-            errorBox.classList.remove('hidden');
+            // Bez rozróżniania „nie ma konta” / „złe hasło” – nie zdradzamy, które adresy mają konto
+            ustawBladLogowania(czyLimitProb(error) ? opisBleduAuth(error, 'Nie zalogowano') : 'Błędny e-mail lub hasło!');
         } else {
+            document.getElementById('login-password').value = '';
             pokazAplikacje(data.user);
         }
     } catch (err) {
-        errorBox.innerText = 'Wystąpił błąd sieci lub autoryzacji.';
-        errorBox.classList.remove('hidden');
+        ustawBladLogowania('Wystąpił błąd sieci lub autoryzacji.');
     }
     btn.innerText = 'Zaloguj się';
     btn.disabled = false;
 }
 
 async function wyloguj() {
-    await supabaseClient.auth.signOut();
-    // Dane osobiste nie mogą zostać w pamięci dla kolejnej osoby na tym urządzeniu
+    try { await supabaseClient.auth.signOut(); } catch (e) {}
+    zakonczSesjeLokalnie();
+}
+
+// Dane (także osobiste) nie mogą zostać w pamięci dla kolejnej osoby na tym urządzeniu.
+// Wywoływane też, gdy sesja skończy się sama (wylogowanie w innej karcie, odebrany dostęp).
+function zakonczSesjeLokalnie() {
     stan.uzytkownikId = null;
     stan.uzytkownikEmail = '';
     stan.budzet = 'wspolny';
+    stan.dostepWspolny = null;
+    stan.odzyskiwanieHasla = false;
     wyczyscDaneBudzetu();
     imp = nowyStanImportu();
     pokazEkranLogowania();
@@ -55,6 +64,8 @@ async function wyloguj() {
 function pokazAplikacje(uzytkownik) {
     stan.uzytkownikId = uzytkownik ? uzytkownik.id : null;
     stan.uzytkownikEmail = uzytkownik ? uzytkownik.email || '' : '';
+    stan.odzyskiwanieHasla = false;
+    stan.dostepWspolny = null; // sprawdza pobierzDane – dla tej osoby, nie poprzedniej
     stan.budzet = zapamietanyBudzet();
     odswiezPrzelacznikBudzetu();
 
@@ -63,14 +74,29 @@ function pokazAplikacje(uzytkownik) {
     pobierzDane();
 }
 
-function pokazEkranLogowania() {
+// opcje: { info, blad } – komunikat pod formularzem (np. „link wygasł”)
+function pokazEkranLogowania(opcje = {}) {
     document.getElementById('glowna-aplikacja').classList.add('hidden');
     document.getElementById('ekran-logowania').classList.remove('hidden');
+    pokazEtapLogowania('logowanie', opcje);
+}
+
+// Zdarzenia logowania z Supabase. W funkcji zwrotnej nie wywołujemy innych metod Supabase
+// bezpośrednio (zalecenie supabase-js – groziłoby zakleszczeniem), stąd setTimeout.
+if (supabaseClient) {
+    supabaseClient.auth.onAuthStateChange((zdarzenie, sesja) => {
+        if (zdarzenie === 'PASSWORD_RECOVERY' && sesja) {
+            setTimeout(() => pokazNoweHaslo(sesja.user), 0);
+        } else if (zdarzenie === 'SIGNED_OUT' && stan.uzytkownikId) {
+            setTimeout(zakonczSesjeLokalnie, 0);
+        }
+    });
 }
 
 // =====================================================================
 // BUDŻET WSPÓLNY / OSOBISTY
 // Wybór jest zapamiętany osobno dla każdej osoby (localStorage na tym urządzeniu).
+// Budżet wspólny jest dostępny tylko dla osób z listy (db.js: czyDostepDoWspolnego).
 // =====================================================================
 
 function kluczWyboruBudzetu() {
@@ -85,6 +111,11 @@ function zapamietanyBudzet() {
     }
 }
 
+// Wiadomo już, że ta osoba nie ma dostępu do budżetu wspólnego (null = jeszcze nie sprawdzono)
+function bezBudzetuWspolnego() {
+    return !!stan.dostepWspolny && !stan.dostepWspolny.czlonek;
+}
+
 async function zmienBudzet(budzet) {
     if (!BUDZETY[budzet] || budzet === stan.budzet) return;
     if (czyWczytanieKopiiTrwa()) {
@@ -93,6 +124,10 @@ async function zmienBudzet(budzet) {
     }
     if (budzet === 'osobisty' && stan.schematBudzetow === false) {
         pokazKomunikat('Budżet osobisty wymaga migracji bazy: uruchom w Supabase supabase/migracja_2026-11b_budzet_osobisty.sql');
+        return;
+    }
+    if (budzet === 'wspolny' && bezBudzetuWspolnego()) {
+        pokazKomunikat('Nie masz dostępu do budżetu wspólnego – szczegóły: Ustawienia → Osoby w budżecie wspólnym');
         return;
     }
     stan.budzet = budzet;
@@ -111,10 +146,13 @@ async function zmienBudzet(budzet) {
     pokazKomunikat(`Otwarto: ${nazwaBudzetu()}`);
 }
 
-// Przełącznik w nagłówku, motyw (klasa na <body>), nazwa w menu i tytuł karty
+// Przełącznik w nagłówku, motyw (klasa na <body>), nazwa w menu i tytuł karty.
+// Osoba bez dostępu do budżetu wspólnego ma tylko budżet osobisty – przełącznik znika.
 function odswiezPrzelacznikBudzetu() {
     const osobisty = stan.budzet === 'osobisty';
     document.body.classList.toggle('budzet-osobisty', osobisty);
+    const przelacznik = document.querySelector('.budzet-przelacznik');
+    if (przelacznik) przelacznik.classList.toggle('hidden', bezBudzetuWspolnego());
     document.querySelectorAll('[data-budzet]').forEach(btn => {
         const aktywny = btn.dataset.budzet === stan.budzet;
         btn.classList.toggle('is-active', aktywny);

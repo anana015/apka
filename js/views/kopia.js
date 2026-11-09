@@ -27,7 +27,13 @@ const TABELE_KOPII = [
     { nazwa: 'categories', sort: 'sort_order', opcjonalna: true, etykieta: 'Kategorie', odmiana: ['kategoria', 'kategorie', 'kategorii'],
       poprawny: w => typeof w.name === 'string' && w.name.trim() !== '', bladWiersza: 'nie ma nazwy' },
     { nazwa: 'imports', sort: 'imported_at', opcjonalna: true, etykieta: 'Historia importów', odmiana: ['import', 'importy', 'importów'],
-      poprawny: () => true, bladWiersza: '' }
+      poprawny: () => true, bladWiersza: '' },
+    // Subkonto wypłat ze skarbonek (migracja 2026-11f); jeden wiersz na budżet
+    // ukrytaGdyBrak: w podglądzie pomijana, gdy nie ma jej ani w kopii, ani w bazie (przed migracją)
+    { nazwa: 'ustawienia_budzetu', sort: null, opcjonalna: true, ukrytaGdyBrak: true, etykieta: 'Ustawienia budżetu',
+      odmiana: ['ustawienie budżetu', 'ustawienia budżetu', 'ustawień budżetu'],
+      poprawny: w => w.konto_wyplat == null || /^\d{10,34}$/.test(String(w.konto_wyplat)),
+      bladWiersza: 'ma niepoprawny numer subkonta wypłat' }
 ];
 
 const BUDZET_DOPELNIACZ = { wspolny: 'budżetu wspólnego', osobisty: 'budżetu osobistego' };
@@ -202,6 +208,7 @@ function liczbaTeraz(nazwa, w) {
         case 'goals': return stan.cele.length;
         case 'categories': return stan.kategorieZBazy ? stan.kategorie.length : null;
         case 'imports': return w.importyTeraz;
+        case 'ustawienia_budzetu': return stan.ustawieniaBudzetuDostepne ? (stan.ustawieniaBudzetu ? 1 : 0) : null;
         default: return null;
     }
 }
@@ -256,7 +263,8 @@ function htmlPodgladuKopii(w) {
     const wTrakcie = w.etap === 'zapis';
     const liczba = n => (Number.isInteger(n) ? String(n) : '—');
 
-    const wiersze = TABELE_KOPII.map(t => {
+    const widoczne = TABELE_KOPII.filter(t => analiza.tabele[t.nazwa] || !t.ukrytaGdyBrak || liczbaTeraz(t.nazwa, w) !== null);
+    const wiersze = widoczne.map(t => {
         const wKopii = analiza.tabele[t.nazwa];
         return `
             <tr class="border-t border-[var(--border)]">
@@ -266,7 +274,7 @@ function htmlPodgladuKopii(w) {
             </tr>`;
     }).join('');
 
-    const pominiete = TABELE_KOPII.filter(t => !analiza.tabele[t.nazwa]).map(t => t.etykieta.toLowerCase());
+    const pominiete = widoczne.filter(t => !analiza.tabele[t.nazwa]).map(t => t.etykieta.toLowerCase());
     const ustawienia = analiza.kopia.settings || {};
     const preferencje = Number.isFinite(ustawienia.docelowaStopa) || typeof ustawienia.zapamietajPodobne === 'boolean';
 
