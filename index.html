@@ -1,54 +1,712 @@
 <!DOCTYPE html>
 <html lang="pl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Najem magazynów</title>
-  <meta name="description" content="Czynsze, wpłaty i zaległości za wynajem jednostek magazynowych">
-
-  <!-- PWA (rozdz. 3): instalacja na telefonie, otwieranie bez paska przeglądarki (test 19) -->
-  <link rel="manifest" href="manifest.webmanifest">
-  <meta name="theme-color" content="#F4F6F8" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#10141A" media="(prefers-color-scheme: dark)">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Najem">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-
-  <!-- Najczęściej używane kroje ładowane od razu, żeby tekst nie „przeskakiwał” -->
-  <link rel="preload" href="fonts/source-sans-3-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="fonts/source-sans-3-latin-ext-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="css/app.css">
-  <script type="module" src="js/app.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0D7367" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#121917" media="(prefers-color-scheme: dark)">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Mój Budżet Domowy</title>
+    <!-- Tailwind CSS (jedyny skrypt spoza repozytorium – patrz README.md, „Bezpieczeństwo”) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Biblioteki w repozytorium, w stałych wersjach (js/vendor/README.md): klient Supabase
+         widzi sesję logowania, więc nie ładujemy go z zewnętrznego serwera w wersji „najnowszej” -->
+    <script src="js/vendor/supabase-js-2.119.0.js"></script>
+    <script src="js/vendor/papaparse-5.4.1.min.js"></script>
+    <script src="js/vendor/lucide-1.70.0.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <a class="pomin" href="#widok">Przejdź do treści</a>
 
-  <!-- Ekran startowy do czasu odczytania sesji -->
-  <div id="start" class="ladowanie" role="status">Uruchamianie…</div>
+    <!-- EKRAN LOGOWANIA -->
+    <div id="ekran-logowania" class="login-screen">
+        <div class="card login-card space-y-6 text-center">
+            <div class="w-16 h-16 bg-[var(--accent)] text-[var(--on-accent)] rounded-2xl flex items-center justify-center mx-auto">
+                <i data-lucide="wallet" class="w-8 h-8"></i>
+            </div>
+            <div>
+                <h1 class="text-2xl font-bold">Budżet Domowy</h1>
+                <p id="login-podtytul" class="text-xs text-[var(--muted)] mt-1">Zaloguj się do budżetu wspólnego i osobistego</p>
+            </div>
 
-  <!-- Logowanie (rozdz. 11) – treść wstawia js/views/logowanie.js. role="main", bo <main id="widok">
-       jest w ukrytej aplikacji, a dokument może mieć tylko jeden element <main> bez atrybutu hidden. -->
-  <div id="ekran-logowania" role="main" hidden></div>
+            <!-- Etapy ekranu (konto.js: pokazEtapLogowania): logowanie → „Nie pamiętasz hasła?” → nowe hasło z linku -->
+            <form id="form-login" onsubmit="obsluzLogowanie(event)" class="space-y-4 text-left">
+                <div>
+                    <label for="login-email" class="field-label">Adres e-mail</label>
+                    <input type="email" id="login-email" required autocomplete="username" placeholder="twoj@email.pl" class="input">
+                </div>
+                <div>
+                    <label for="login-password" class="field-label">Hasło</label>
+                    <input type="password" id="login-password" required autocomplete="current-password" placeholder="••••••••" class="input">
+                </div>
+                <button type="submit" id="btn-login" class="btn-primary">Zaloguj się</button>
+                <button type="button" id="btn-nie-pamietam" onclick="pokazEtapLogowania('reset', { fokus: true })" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">Nie pamiętasz hasła?</button>
+            </form>
 
-  <div id="app" class="aplikacja" hidden>
-    <header class="naglowek">
-      <a id="wstecz" class="wstecz" href="#/pulpit" hidden></a>
-      <h1 id="tytul" tabindex="-1">Pulpit</h1>
-      <a id="przycisk-import" class="ikona-btn" href="#/import" aria-label="Import wyciągu" title="Import wyciągu"></a>
-      <a id="przycisk-ustawienia" class="ikona-btn" href="#/ustawienia" aria-label="Ustawienia" title="Ustawienia"></a>
-    </header>
+            <form id="form-reset" onsubmit="wyslijLinkResetu(event)" class="hidden space-y-4 text-left" novalidate>
+                <p class="text-xs text-[var(--muted)]">Podaj adres e-mail konta. Wyślemy link, pod którym ustawisz nowe hasło.</p>
+                <div>
+                    <label for="reset-email" class="field-label">Adres e-mail</label>
+                    <input type="email" id="reset-email" required autocomplete="email" placeholder="twoj@email.pl" class="input">
+                </div>
+                <button type="submit" id="btn-reset" class="btn-primary">Wyślij link</button>
+                <button type="button" onclick="pokazEtapLogowania('logowanie', { fokus: true })" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">‹ Wróć do logowania</button>
+            </form>
 
-    <nav id="zakladki" class="zakladki" aria-label="Główne ekrany"></nav>
+            <form id="form-nowe-haslo" onsubmit="zapiszNoweHasloZLinku(event)" class="hidden space-y-4 text-left" novalidate>
+                <p class="text-xs text-[var(--muted)]">Ustaw nowe hasło dla <strong id="nowe-haslo-email"></strong>.</p>
+                <!-- Dla menedżerów haseł: do którego konta należy nowe hasło -->
+                <input type="email" id="nowe-haslo-login" autocomplete="username" class="hidden" tabindex="-1" aria-hidden="true" readonly>
+                <div>
+                    <label for="nowe-haslo" class="field-label">Nowe hasło</label>
+                    <input type="password" id="nowe-haslo" required minlength="8" maxlength="72" autocomplete="new-password" class="input" aria-describedby="nowe-haslo-wskazowka">
+                    <p id="nowe-haslo-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 8 znaków. Nie używaj hasła z innych serwisów.</p>
+                </div>
+                <div>
+                    <label for="nowe-haslo-2" class="field-label">Powtórz nowe hasło</label>
+                    <input type="password" id="nowe-haslo-2" required minlength="8" maxlength="72" autocomplete="new-password" class="input">
+                </div>
+                <button type="submit" id="btn-nowe-haslo" class="btn-primary">Zapisz hasło</button>
+                <button type="button" onclick="wyloguj()" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">Anuluj i wyloguj</button>
+            </form>
 
-    <main id="widok" class="widok" tabindex="-1"></main>
-  </div>
+            <div id="login-error" role="alert" class="hidden text-xs text-left text-[var(--c-spend)] p-3 rounded-xl border border-current"></div>
+            <div id="login-info" role="status" class="hidden text-xs text-left p-3 rounded-xl border border-[var(--border)]"></div>
+        </div>
+    </div>
 
-  <!-- Komunikaty (12.2): nad paskiem zakładek, ogłaszane przez czytnik ekranu -->
-  <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+    <!-- GŁÓWNA APLIKACJA -->
+    <div id="glowna-aplikacja" class="hidden app-shell">
 
-  <noscript><p class="pusty">Aplikacja wymaga włączonej obsługi JavaScript.</p></noscript>
+        <!-- NAGŁÓWEK -->
+        <header class="app-header">
+            <div class="min-w-0">
+                <h1 class="text-xl font-bold" id="app-title">Pulpit</h1>
+                <p class="text-xs opacity-80" id="status-polaczenia" aria-live="polite">Połączono z chmurą</p>
+            </div>
+            <!-- Przełącznik budżetu: wspólny (oboje) / osobisty (tylko zalogowana osoba) -->
+            <div class="budzet-przelacznik" role="radiogroup" aria-label="Który budżet pokazać" onkeydown="klawiszPrzelacznikaBudzetu(event)">
+                <button type="button" role="radio" data-budzet="wspolny" aria-checked="true" class="budzet-opcja is-active" onclick="zmienBudzet('wspolny')">
+                    <i data-lucide="users" class="w-4 h-4" aria-hidden="true"></i><span>Wspólny</span>
+                </button>
+                <button type="button" role="radio" data-budzet="osobisty" aria-checked="false" tabindex="-1" class="budzet-opcja" onclick="zmienBudzet('osobisty')">
+                    <i data-lucide="user" class="w-4 h-4" aria-hidden="true"></i><span>Osobisty</span>
+                </button>
+            </div>
+            <div class="header-akcje flex gap-1">
+                <button type="button" onclick="pobierzDane()" class="icon-btn" title="Odśwież" aria-label="Odśwież dane">
+                    <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                </button>
+                <button type="button" onclick="zmienZakladke('ustawienia')" class="icon-btn" title="Ustawienia" aria-label="Ustawienia">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                </button>
+                <button type="button" onclick="wyloguj()" class="icon-btn" title="Wyloguj" aria-label="Wyloguj">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- ZAWARTOŚĆ ZAKŁADEK -->
+        <main id="app-main" class="app-main">
+
+            <!-- 1. PULPIT -->
+            <section id="tab-pulpit" class="view" aria-labelledby="app-title">
+                <!-- Stan pusty (10.3) -->
+                <div id="pulpit-pusty" class="hidden card span-all text-center py-10 space-y-4">
+                    <p class="text-sm">Nie masz jeszcze transakcji. Zacznij od importu wyciągu.</p>
+                    <button type="button" onclick="zmienZakladke('import')" class="btn-primary max-w-xs mx-auto">Przejdź do importu</button>
+                </div>
+
+                <!-- Wybór okresu -->
+                <div class="card span-all space-y-2 pulpit-tresc">
+                    <div class="flex gap-2" role="group" aria-label="Tryb wyboru okresu">
+                        <button type="button" onclick="zmienTrybFiltraPulpit('miesiac')" id="btn-pulpit-miesiac" class="chip is-active flex-1 min-[900px]:flex-none">Miesiąc</button>
+                        <button type="button" onclick="zmienTrybFiltraPulpit('zakres')" id="btn-pulpit-zakres" class="chip flex-1 min-[900px]:flex-none">Zakres dat</button>
+                    </div>
+                    <div id="pulpit-kontener-miesiac" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar min-[900px]:flex-wrap"></div>
+                    <div id="pulpit-kontener-zakres" class="hidden grid grid-cols-2 gap-2 min-[900px]:max-w-md">
+                        <div>
+                            <label for="pulpit-data-od" class="field-label">Od</label>
+                            <input type="date" id="pulpit-data-od" onchange="zmienZakresPulpit()" class="input">
+                        </div>
+                        <div>
+                            <label for="pulpit-data-do" class="field-label">Do</label>
+                            <input type="date" id="pulpit-data-do" onchange="zmienZakresPulpit()" class="input">
+                        </div>
+                    </div>
+                </div>
+
+                <button type="button" id="alert-bez-kategorii" onclick="przejdzDoBezKategorii()" class="hidden span-all w-full text-left p-3 rounded-[14px] flex justify-between items-center border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:border-amber-800/60 dark:text-amber-100">
+                    <span class="flex items-center gap-2 text-sm">
+                        <i data-lucide="alert-circle" class="w-5 h-5 text-amber-600 shrink-0"></i>
+                        <span id="alert-tekst">Transakcje czekają na kategorię</span>
+                    </span>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-amber-600"></i>
+                </button>
+
+                <div class="tiles span-all pulpit-tresc">
+                    <div class="card">
+                        <span class="tile-label">Przychody</span>
+                        <p class="tile-value kwota text-[var(--c-income)]" id="pulpit-przychody">0 zł</p>
+                    </div>
+                    <div class="card">
+                        <span class="tile-label">Wydatki</span>
+                        <p class="tile-value kwota text-[var(--c-spend)]" id="pulpit-wydatki">0 zł</p>
+                        <span class="tile-note" id="pulpit-wydatki-zwroty"></span>
+                    </div>
+                    <div class="card">
+                        <span class="tile-label" title="Wpłaty na cele i kategorie oszczędnościowe (np. Akcje/Obligacje) minus wypłaty z celów">Odłożone (netto)</span>
+                        <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-oszczednosci">0 zł</p>
+                        <span class="tile-note" id="pulpit-stopa-proc">0% przychodów</span>
+                    </div>
+                    <div class="card">
+                        <span class="tile-label">Zostało na koncie</span>
+                        <p class="tile-value kwota" id="pulpit-zostalo">0 zł</p>
+                    </div>
+                </div>
+
+                <!-- 6 #8: Cele oszczędnościowe – klik przenosi do zakładki Cele -->
+                <article id="pulpit-cele" class="card space-y-2 pulpit-tresc cursor-pointer hover:ring-1 hover:ring-[var(--border)] transition"
+                    role="link" tabindex="0" onclick="zmienZakladke('cele')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); zmienZakladke('cele'); }">
+                    <div class="flex justify-between items-baseline gap-2">
+                        <h2 class="font-semibold text-sm">Cele oszczędnościowe</h2>
+                        <span class="text-xs font-semibold text-[var(--accent)]">Szczegóły ›</span>
+                    </div>
+                    <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-cele-suma">0 zł</p>
+                    <div id="pulpit-cele-pasek" class="flex h-2.5 w-full rounded-full overflow-hidden bg-[var(--bg)]" aria-hidden="true"></div>
+                    <div id="pulpit-cele-legenda" class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--muted)]"></div>
+                    <p id="pulpit-cele-podpis" class="text-[11px] text-[var(--muted)]"></p>
+                </article>
+
+                <!-- Oszczędności w kategoriach z przełącznikiem „Oszczędność” (np. Akcje/Obligacje) – rysuje oszczednosci.js -->
+                <article id="pulpit-oszcz-kat" class="hidden card space-y-2 pulpit-tresc" aria-labelledby="pulpit-oszcz-kat-tytul">
+                    <div class="flex justify-between items-baseline gap-2">
+                        <h2 id="pulpit-oszcz-kat-tytul" class="font-semibold text-sm">Oszczędności w kategoriach</h2>
+                        <span class="text-[11px] text-[var(--muted)]">poza celami</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <span class="tile-label">W wybranym okresie</span>
+                            <p class="tile-value kwota text-[var(--c-save)]" id="pulpit-oszcz-kat-okres">0 zł</p>
+                            <span class="tile-note" id="pulpit-oszcz-kat-podpis"></span>
+                        </div>
+                        <div>
+                            <span class="tile-label">Zebrane łącznie</span>
+                            <p class="tile-value kwota" id="pulpit-oszcz-kat-lacznie">0 zł</p>
+                            <span class="tile-note">od początku historii</span>
+                        </div>
+                    </div>
+                    <div id="pulpit-oszcz-kat-lista" class="space-y-1 text-sm pt-1"></div>
+                </article>
+
+                <div class="card space-y-3 pulpit-tresc">
+                    <h2 class="font-semibold text-sm">Wydatki według kategorii</h2>
+                    <div id="pulpit-kategorie-lista" class="split-list text-sm"></div>
+                </div>
+            </section>
+
+            <!-- 2. TRANSAKCJE (specyfikacja 7.1) -->
+            <section id="tab-transakcje" class="hidden view">
+                <div class="card span-all space-y-3">
+                    <!-- Filtr kategorii po kliknięciu kategorii na Pulpicie (rysuje transakcje.js) -->
+                    <div id="transakcje-filtr-kategorii" class="hidden space-y-2 pb-3 border-b border-[var(--border)]"></div>
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar" role="group" aria-label="Filtr transakcji">
+                        <button type="button" onclick="zmienFiltrTransakcji('wszystkie')" id="btn-filtr-wszystkie" class="chip is-active" aria-pressed="true">Wszystkie (<span id="licznik-wszystkie">0</span>)</button>
+                        <button type="button" onclick="zmienFiltrTransakcji('brak')" id="btn-filtr-brak" class="chip" aria-pressed="false">Do przypisania (<span id="licznik-brak">0</span>)</button>
+                        <button type="button" onclick="zmienFiltrTransakcji('przypisane')" id="btn-filtr-przypisane" class="chip" aria-pressed="false">Przypisane (<span id="licznik-przypisane">0</span>)</button>
+                    </div>
+                    <div id="transakcje-miesiace" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar min-[900px]:flex-wrap" role="group" aria-label="Wybór miesiąca"></div>
+                    <label class="flex items-center justify-between gap-3 text-xs pt-1 border-t border-[var(--border)]">
+                        <span class="pt-2">
+                            <span class="font-semibold block">Zapamiętaj kategorię dla podobnych transakcji</span>
+                            <span class="text-[10px] text-[var(--muted)]">Tworzy regułę z nazwy kontrahenta, np. ZABKA → Zakupy spożywcze</span>
+                        </span>
+                        <input type="checkbox" id="przelacznik-zapamietaj" role="switch" class="switch mt-2" checked onchange="zmienZapamietywanie(this.checked)">
+                    </label>
+                </div>
+                <p id="transakcje-podsumowanie" class="span-all text-[11px] text-[var(--muted)] kwota" aria-live="polite"></p>
+                <div id="lista-transakcji" class="span-all space-y-2"></div>
+            </section>
+
+            <!-- 3. IMPORT CSV (specyfikacja 5 i 7.2) – treść etapów rysuje import.js -->
+            <section id="tab-import" class="hidden view">
+                <!-- Start: prostokąt z przerywaną ramką; na komputerze działa też przeciągnięcie pliku -->
+                <div id="import-start" class="span-all space-y-3">
+                    <p id="import-budzet" class="text-xs font-semibold text-[var(--accent)]" aria-live="polite"></p>
+                    <button type="button" id="import-strefa" class="w-full card border-2 border-dashed border-[var(--border)] p-10 text-center hover:border-[var(--accent)] transition" onclick="document.getElementById('csv-file-input').click()">
+                        <i data-lucide="upload-cloud" class="w-10 h-10 mx-auto text-[var(--muted)] mb-2"></i>
+                        <span class="block text-sm font-semibold mb-1">Wybierz plik CSV z banku</span>
+                        <span class="block text-xs text-[var(--muted)]">Pekao · PKO BP · Alior Bank – bank rozpoznamy automatycznie</span>
+                        <span class="hidden min-[900px]:block text-[11px] text-[var(--muted)] mt-2">albo przeciągnij plik tutaj</span>
+                    </button>
+                    <p id="import-blad" role="alert" class="hidden card !p-3 text-xs text-[var(--c-spend)] border border-current"></p>
+                    <details class="card !p-3 text-xs">
+                        <summary class="cursor-pointer font-semibold">Jak pobrać plik CSV z banku?</summary>
+                        <ul id="import-banki" class="mt-2 divide-y divide-[var(--border)]"></ul>
+                        <p class="text-[10px] text-[var(--muted)] mt-2">Plik z innego banku też zadziała: jeśli kolumny nie zostaną rozpoznane, wskażesz je ręcznie, a wybór zapamiętamy.</p>
+                    </details>
+                </div>
+                <input type="file" id="csv-file-input" accept=".csv,text/csv" class="hidden" onchange="obsluzPlikCSV(event)" aria-label="Plik CSV z wyciągiem">
+
+                <div id="import-mapowanie" class="hidden span-all card space-y-3"></div>
+                <div id="import-podglad" class="hidden span-all space-y-3"></div>
+                <div id="import-wynik" class="hidden span-all"></div>
+                <div id="import-historia" class="span-all"></div>
+            </section>
+
+            <!-- 4. CELE -->
+            <section id="tab-cele" class="hidden view">
+                <!-- 8.2 Kafelki: „Na subkontach” i „Wpłacone w [M]” -->
+                <div class="card flex justify-between items-center gap-3 cele-lista">
+                    <div class="min-w-0">
+                        <span class="tile-label">Na subkontach razem</span>
+                        <p class="tile-value kwota" id="cele-suma-ogolna">0 zł</p>
+                        <span class="tile-note" id="cele-suma-cel"></span>
+                    </div>
+                    <button type="button" onclick="otworzFormularzCelu()" class="chip is-active">+ Dodaj nowy cel</button>
+                </div>
+                <div class="card cele-lista">
+                    <span class="tile-label" id="cele-wplacone-etykieta">Wpłacone w tym miesiącu</span>
+                    <p class="tile-value kwota text-[var(--c-save)]" id="cele-wplacone">0 zł</p>
+                    <span class="tile-note" id="cele-wplacone-proc"></span>
+                </div>
+
+                <!-- 8.4 Formularz dodawania / edycji celu -->
+                <div id="modal-cel" class="hidden card span-all space-y-3 border border-[var(--border)]">
+                    <h2 class="font-semibold text-sm" id="modal-tytul">Dodaj nowy cel oszczędnościowy</h2>
+                    <form onsubmit="zapiszCel(event)" class="grid gap-3 min-[900px]:grid-cols-2 text-xs" novalidate>
+                        <input type="hidden" id="cel-id">
+                        <div class="min-[900px]:col-span-2">
+                            <label for="cel-nazwa" class="field-label">Nazwa celu</label>
+                            <input type="text" id="cel-nazwa" required maxlength="40" placeholder="np. Wakacje 2027" class="input">
+                        </div>
+                        <div>
+                            <label for="cel-kwota" class="field-label">Kwota docelowa (zł)</label>
+                            <input type="text" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input kwota">
+                        </div>
+                        <div>
+                            <label for="cel-termin" class="field-label">Termin</label>
+                            <input type="month" id="cel-termin" required class="input">
+                        </div>
+                        <div>
+                            <label for="cel-keyword" class="field-label">Nr subkonta celu (wpłaty)</label>
+                            <input type="text" id="cel-keyword" required inputmode="numeric" placeholder="26 cyfr numeru subkonta tego celu" class="input" aria-describedby="cel-keyword-opis" oninput="odswiezPodpowiedzSalda()">
+                            <p id="cel-keyword-opis" class="text-[10px] text-[var(--muted)] mt-1">Przelew na ten numer = wpłata do celu.</p>
+                        </div>
+                        <div>
+                            <label for="cel-keywords-out" class="field-label">Słowa kluczowe wypłat (po przecinku)</label>
+                            <input type="text" id="cel-keywords-out" placeholder="np. wakacje, bilety" class="input" aria-describedby="cel-keywords-out-opis" oninput="odswiezPodpowiedzSalda()">
+                            <p id="cel-keywords-out-opis" class="text-[10px] text-[var(--muted)] mt-1">Wypłaty ze wspólnego subkonta wypłat trafią do tego celu, gdy tytuł zawiera jedno z tych słów.</p>
+                        </div>
+
+                        <fieldset class="min-[900px]:col-span-2 space-y-2 border-t border-[var(--border)] pt-3">
+                            <legend class="sr-only">Obecne saldo subkonta</legend>
+                            <div class="grid gap-3 min-[900px]:grid-cols-2 items-start">
+                                <div>
+                                    <label for="cel-saldo" class="field-label">Obecne saldo subkonta (zł)</label>
+                                    <input type="text" inputmode="decimal" id="cel-saldo" value="0" class="input kwota" aria-describedby="cel-saldo-podpowiedz" oninput="odswiezPodpowiedzSalda()">
+                                </div>
+                                <div class="space-y-1.5 pt-1" role="radiogroup" aria-label="Czym jest podane saldo">
+                                    <label class="flex items-start gap-2 cursor-pointer">
+                                        <input type="radio" name="cel-saldo-typ" id="cel-saldo-poczatkowe" checked class="mt-0.5 accent-[var(--accent)]" onchange="odswiezPodpowiedzSalda()">
+                                        <span><span class="font-semibold">Saldo sprzed pierwszego importu</span><span class="block text-[10px] text-[var(--muted)]">Stan subkonta, zanim zaczyna się historia wyciągów w aplikacji</span></span>
+                                    </label>
+                                    <label class="flex items-start gap-2 cursor-pointer">
+                                        <input type="radio" name="cel-saldo-typ" id="cel-saldo-dzis" class="mt-0.5 accent-[var(--accent)]" onchange="odswiezPodpowiedzSalda()">
+                                        <span><span class="font-semibold">Dzisiejsze saldo w banku</span><span class="block text-[10px] text-[var(--muted)]">Aplikacja odejmie przelewy już zaimportowane</span></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="grid gap-3 grid-cols-2 min-[900px]:max-w-md">
+                                <div>
+                                    <label for="cel-oprocentowanie" class="field-label">Oprocentowanie (% rocznie)</label>
+                                    <input type="text" inputmode="decimal" id="cel-oprocentowanie" value="0,5" class="input kwota" aria-describedby="cel-odsetki-opis" oninput="odswiezPodpowiedzSalda()">
+                                </div>
+                                <div>
+                                    <label for="cel-prog" class="field-label">Odsetki od nadwyżki ponad (zł)</label>
+                                    <input type="text" inputmode="decimal" id="cel-prog" value="1000" class="input kwota" aria-describedby="cel-odsetki-opis" oninput="odswiezPodpowiedzSalda()">
+                                </div>
+                            </div>
+                            <p id="cel-odsetki-opis" class="text-[10px] text-[var(--muted)]">Wpisz 0 w progu, jeśli odsetki są od całego salda, albo 0 w oprocentowaniu, jeśli subkonto nie jest oprocentowane. Aplikacja szacuje odsetki dziennie i dopisuje je co miesiąc po potrąceniu 19% podatku Belki.</p>
+                            <p id="cel-saldo-podpowiedz" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                        </fieldset>
+
+                        <div class="min-[900px]:col-span-2">
+                            <label for="cel-notatka" class="field-label">Opis (opcjonalnie)</label>
+                            <input type="text" id="cel-notatka" maxlength="80" placeholder="np. Chorwacja, 2 tygodnie" class="input">
+                        </div>
+
+                        <p class="min-[900px]:col-span-2 text-[11px] text-[var(--muted)]">Przelewy na ten numer subkonta i wypłaty z podanymi słowami będą automatycznie przypisywane do celu – także te zaimportowane wcześniej.</p>
+                        <p id="cel-blad" role="alert" class="hidden min-[900px]:col-span-2 text-xs text-[var(--c-spend)] p-3 rounded-xl border border-current"></p>
+                        <div class="flex gap-2 pt-1 min-[900px]:col-span-2">
+                            <button type="submit" id="btn-zapisz-cel" class="btn-primary flex-1 min-[900px]:flex-none min-[900px]:w-48">Zapisz cel</button>
+                            <button type="button" onclick="zamknijFormularzCelu()" class="btn-secondary">Anuluj</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div id="lista-celow" class="span-all card-grid cele-lista"></div>
+
+                <!-- Cele zakończone (archived) – zwinięte pod listą -->
+                <details id="cele-zakonczone-box" class="hidden span-all cele-lista">
+                    <summary class="cursor-pointer text-xs font-semibold text-[var(--muted)] py-1">Zakończone cele (<span id="cele-zakonczone-licznik">0</span>)</summary>
+                    <div id="lista-celow-zakonczonych" class="card-grid mt-2"></div>
+                </details>
+
+                <!-- 8.3 Szczegóły celu (rysowane w cele.js) -->
+                <div id="cel-szczegoly" class="hidden span-all"></div>
+            </section>
+
+            <!-- 5. STATYSTYKI (specyfikacja, rozdział 9): bieżący rok, od stycznia -->
+            <section id="tab-statystyki" class="hidden view">
+                <p id="stat-podtytul" class="span-all text-xs font-semibold text-[var(--muted)]"></p>
+
+                <!-- Stan pusty (10.3): mniej niż 2 miesiące danych w roku -->
+                <div id="stat-pusty" class="hidden card span-all text-center py-10 space-y-4">
+                    <p class="text-sm">Statystyki pojawią się po imporcie drugiego miesiąca.</p>
+                    <button type="button" onclick="zmienZakladke('import')" class="btn-primary max-w-xs mx-auto">Przejdź do importu</button>
+                </div>
+
+                <!-- 9.1 Kafelki wskaźników -->
+                <div id="stat-kafelki" class="tiles span-all stat-tresc"></div>
+
+                <!-- 9.2.1 Wydatki i oszczędności -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Wydatki i oszczędności</h2>
+                    <div id="stat-wykres-wydatki"></div>
+                    <div class="flex gap-4 justify-center text-[11px] text-[var(--muted)]">
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-spend)]"></span>Wydatki</span>
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-save)]"></span>Odłożone netto</span>
+                    </div>
+                </article>
+
+                <!-- 9.2.2 Stopa oszczędności -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Stopa oszczędności</h2>
+                    <div id="stat-wykres-stopa"></div>
+                    <ul id="stat-stopa-wyjasnienia" class="text-[11px] text-[var(--muted)] space-y-0.5"></ul>
+                </article>
+
+                <!-- 9.2.3 Struktura wydatków -->
+                <article class="card space-y-3 stat-tresc">
+                    <h2 class="font-semibold text-sm">Struktura wydatków</h2>
+                    <div id="stat-struktura-pasek" class="flex h-3 w-full rounded-full overflow-hidden" role="img" aria-label="Udział grup kategorii w wydatkach roku"></div>
+                    <table class="w-full text-xs">
+                        <thead class="text-[10px] text-[var(--muted)]">
+                            <tr><th class="text-left font-normal pb-1">Kategoria</th>
+                                <th class="text-right font-normal pb-1">Udział</th>
+                                <th class="text-right font-normal pb-1">Średnio / mies.</th></tr>
+                        </thead>
+                        <tbody id="stat-struktura-tabela"></tbody>
+                    </table>
+                </article>
+
+                <!-- 9.2.4 Trend kategorii -->
+                <article class="card space-y-3 stat-tresc">
+                    <h2 class="font-semibold text-sm">Trend kategorii</h2>
+                    <div id="stat-trend-przyciski" class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1" role="group" aria-label="Wybór kategorii"></div>
+                    <div id="stat-trend-wykres"></div>
+                </article>
+
+                <!-- 9.2.5 Odchylenia w ostatnim miesiącu -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm" id="stat-odchylenia-tytul">Odchylenia</h2>
+                    <p class="text-[10px] text-[var(--muted)]">Względem średniej z 3 poprzednich miesięcy</p>
+                    <div id="stat-odchylenia"></div>
+                    <p id="stat-odchylenia-dopisek" class="text-[10px] text-[var(--muted)] italic"></p>
+                </article>
+
+                <!-- 9.2.6 Saldo subkont -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Saldo subkont</h2>
+                    <div id="stat-wykres-saldo"></div>
+                </article>
+
+                <!-- Oszczędności w kategoriach (np. Akcje/Obligacje) – rysuje oszczednosci.js -->
+                <article id="stat-oszcz-kat" class="hidden card space-y-3 stat-tresc">
+                    <h2 class="font-semibold text-sm">Oszczędności w kategoriach</h2>
+                    <div id="stat-oszcz-kat-kafelki" class="grid grid-cols-2 gap-3"></div>
+                    <div id="stat-oszcz-kat-wykres"></div>
+                    <div class="flex gap-4 justify-center text-[11px] text-[var(--muted)]">
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-save)]"></span>Wpłaty</span>
+                        <span class="flex items-center gap-1.5"><span class="dot rounded-sm bg-[var(--c-spend)]"></span>Wypłaty</span>
+                    </div>
+                    <table class="w-full text-xs">
+                        <thead class="text-[10px] text-[var(--muted)]">
+                            <tr><th class="text-left font-normal pb-1">Kategoria</th>
+                                <th class="text-right font-normal pb-1">W tym roku</th>
+                                <th class="text-right font-normal pb-1">Średnio / mies.</th>
+                                <th class="text-right font-normal pb-1">Łącznie</th></tr>
+                        </thead>
+                        <tbody id="stat-oszcz-kat-tabela"></tbody>
+                    </table>
+                </article>
+
+                <!-- 9.2.7 Porównanie lat -->
+                <article class="card space-y-2 stat-tresc">
+                    <h2 class="font-semibold text-sm">Porównanie lat</h2>
+                    <div id="stat-porownanie-lat"></div>
+                </article>
+            </section>
+
+            <!-- 6. USTAWIENIA (zębatka w nagłówku; specyfikacja 11.3, 9.1, 3 „categories”)
+                 Trzy poziomy, szczegóły dopiero po wejściu głębiej:
+                   menu → strona (Kategorie, Reguły, …) → szczegóły jednej kategorii.
+                 Widoczna jest jedna strona naraz (data-strona) – przełącza ją ustawienia.js.
+                 Klasa „contents”: karty strony układają się w siatce widoku jak zwykłe karty. -->
+            <section id="tab-ustawienia" class="hidden view">
+                <button type="button" id="ust-wroc" onclick="wsteczUstawienia()" class="span-all justify-self-start text-sm font-semibold text-[var(--accent)]">‹ <span id="ust-wroc-nazwa">Pulpit</span></button>
+
+                <!-- POZIOM 1: MENU (wiersze z podsumowaniem rysuje rysujMenuUstawien) -->
+                <div class="ust-strona contents" data-strona="menu">
+                    <nav class="card !p-2" aria-labelledby="ust-menu-budzet">
+                        <h2 id="ust-menu-budzet" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1 pb-1">Budżet wspólny</h2>
+                        <ul id="ust-menu-budzet-lista" class="divide-y divide-[var(--border)]"></ul>
+                    </nav>
+                    <div class="space-y-3 min-[900px]:space-y-4">
+                        <nav class="card !p-2" aria-labelledby="ust-menu-urzadzenie">
+                            <h2 id="ust-menu-urzadzenie" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1 pb-1">Na tym urządzeniu</h2>
+                            <ul id="ust-menu-urzadzenie-lista" class="divide-y divide-[var(--border)]"></ul>
+                        </nav>
+                        <nav class="card !p-2" aria-labelledby="ust-menu-konto">
+                            <h2 id="ust-menu-konto" class="text-xs font-semibold text-[var(--muted)] px-2 pt-1">Konto</h2>
+                            <p id="ust-konto" class="text-xs text-[var(--muted)] truncate px-2 pb-1"></p>
+                            <ul id="ust-menu-konto-lista" class="divide-y divide-[var(--border)]"></ul>
+                            <div class="px-2 pt-2 pb-1">
+                                <button type="button" onclick="wyloguj()" class="btn-secondary w-full">Wyloguj</button>
+                            </div>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- POZIOM 2: PREFERENCJE (zapisane w tej przeglądarce, wspólne dla obu budżetów) -->
+                <div class="ust-strona contents hidden" data-strona="preferencje">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <div>
+                            <h2 class="font-semibold text-sm">Preferencje</h2>
+                            <p class="text-[10px] text-[var(--muted)]">Zapisane w tej przeglądarce – dotyczą obu budżetów.</p>
+                        </div>
+                        <div class="flex items-center justify-between gap-3 text-xs border-t border-[var(--border)] pt-3">
+                            <label for="stat-cel-stopy">
+                                <span class="font-semibold block">Docelowa stopa oszczędności</span>
+                                <span class="text-[10px] text-[var(--muted)]">Kafelek i wykres w Statystykach (domyślnie 15%)</span>
+                            </label>
+                            <span class="flex items-center gap-1">
+                                <input type="number" id="stat-cel-stopy" min="0" max="100" step="1" inputmode="decimal" onchange="zmienDocelowaStope(this.value)" class="input !w-20 text-right kwota">
+                                <span>%</span>
+                            </span>
+                        </div>
+                        <label class="flex items-center justify-between gap-3 text-xs border-t border-[var(--border)] pt-3">
+                            <span>
+                                <span class="font-semibold block">Zapamiętaj kategorię dla podobnych transakcji</span>
+                                <span class="text-[10px] text-[var(--muted)]">To samo co przełącznik w zakładce Transakcje</span>
+                            </span>
+                            <input type="checkbox" id="ust-zapamietaj" role="switch" class="switch" onchange="zmienZapamietywanie(this.checked)">
+                        </label>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: KATEGORIE otwartego budżetu – czysta lista; szczegóły po kliknięciu kategorii -->
+                <div class="ust-strona contents hidden" data-strona="kategorie">
+                    <article class="card space-y-3 span-all">
+                        <div class="flex justify-between items-center gap-2 flex-wrap">
+                            <h2 class="font-semibold text-sm">Kategorie <span id="kat-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                            <span class="flex items-center gap-2 flex-wrap">
+                                <span id="kat-info" class="text-[11px] text-[var(--muted)]"></span>
+                                <button type="button" id="btn-kat-kolejnosc" onclick="przelaczKolejnoscKategorii()" class="chip">Zmień kolejność</button>
+                                <button type="button" id="btn-kat-wybor" onclick="otworzWyborKategorii()" class="chip is-active" aria-controls="kat-wybor">Wybierz z listy…</button>
+                            </span>
+                        </div>
+                        <p id="kat-opis" class="text-[11px] text-[var(--muted)]"></p>
+                        <div id="kat-wybor" class="hidden space-y-3 p-3 rounded-xl border border-[var(--border)]"></div>
+                        <div id="kat-lista"></div>
+                        <form id="kat-form" onsubmit="dodajKategorie(event)" class="flex gap-2 pt-1">
+                            <label for="kat-nowa" class="sr-only">Nazwa nowej kategorii</label>
+                            <input type="text" id="kat-nowa" maxlength="40" placeholder="Nowa kategoria, np. Dzieci" class="input">
+                            <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj</button>
+                        </form>
+                    </article>
+                </div>
+
+                <!-- POZIOM 3: SZCZEGÓŁY KATEGORII (nazwa, kolor, limit, stała, oszczędność, użycie, usuwanie – rysuje ustawienia.js) -->
+                <div class="ust-strona contents hidden" data-strona="kategoria">
+                    <article id="kat-szczegoly" class="card span-all max-w-2xl w-full space-y-4"></article>
+                </div>
+
+                <!-- POZIOM 2: REGUŁY otwartego budżetu: fraza / numer konta → kategoria -->
+                <div class="ust-strona contents hidden" data-strona="reguly">
+                    <article class="card space-y-3 span-all">
+                        <div class="flex justify-between items-center gap-2 flex-wrap">
+                            <h2 class="font-semibold text-sm">Reguły <span id="reg-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                            <span id="reg-info" class="text-[11px] text-[var(--muted)]"></span>
+                        </div>
+                        <details class="text-[11px] text-[var(--muted)]">
+                            <summary class="cursor-pointer font-semibold">Jak działają reguły?</summary>
+                            <p class="mt-1">Reguła nadaje kategorię wydatkom, których kontrahent lub tytuł zawiera wszystkie słowa frazy. Fraza z samych cyfr (np. numer konta) porównywana jest z rachunkiem drugiej strony. Ręcznie wybrana kategoria zawsze ma pierwszeństwo; z kilku pasujących reguł wygrywa numer konta, potem najnowsza.</p>
+                        </details>
+                        <label for="reg-filtr" class="sr-only">Szukaj reguły</label>
+                        <input type="search" id="reg-filtr" oninput="rysujRegulyUstawien()" placeholder="Szukaj frazy albo kategorii…" class="input">
+                        <div id="reg-lista" class="scroll-box"></div>
+                        <form onsubmit="dodajRegule(event)" class="flex flex-wrap gap-2 pt-1">
+                            <label for="reg-nowa-fraza" class="sr-only">Fraza nowej reguły</label>
+                            <input type="text" id="reg-nowa-fraza" maxlength="60" placeholder="Fraza, np. ORLEN albo numer konta" class="input flex-1 min-w-[10rem]">
+                            <label for="reg-nowa-kat" class="sr-only">Kategoria nowej reguły</label>
+                            <select id="reg-nowa-kat" class="input !w-auto max-w-[13rem]"></select>
+                            <button type="submit" class="btn-secondary whitespace-nowrap">+ Dodaj regułę</button>
+                        </form>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: PRZELEWY NA KONTO WSPÓLNE (tylko budżet osobisty): numer konta → „Przelew na wspólne” -->
+                <div class="ust-strona contents hidden" data-strona="kontoWspolne">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Przelewy na konto wspólne</h2>
+                        <p class="text-[10px] text-[var(--muted)]">Przelewy z Twojego konta na ten numer trafią same do kategorii „Przelew na wspólne” – także te już zaimportowane. Działa tylko w Twoim budżecie osobistym.</p>
+                        <form onsubmit="zapiszKontoWspolne(event)" class="flex gap-2">
+                            <label for="ust-konto-wspolne" class="sr-only">Numer konta wspólnego</label>
+                            <input type="text" id="ust-konto-wspolne" inputmode="numeric" autocomplete="off" placeholder="26 cyfr numeru konta wspólnego" class="input kwota">
+                            <button type="submit" class="btn-secondary whitespace-nowrap">Zapisz</button>
+                        </form>
+                        <p id="ust-konto-wspolne-info" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: SUBKONTO WYPŁAT ZE SKARBONEK otwartego budżetu (tabela ustawienia_budzetu, ustawienia.js) -->
+                <div class="ust-strona contents hidden" data-strona="subkonto">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Subkonto wypłat ze skarbonek <span id="sub-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                        <p class="text-[10px] text-[var(--muted)]">Numer rachunku, z którego bank przelewa wypłaty z celów na konto główne. Każdy wpływ z tego numeru liczy się jako wypłata z oszczędności, a nie przychód – także w już zaimportowanych transakcjach. Numer jest zapisany w Supabase i widzą go tylko osoby z dostępem do tego budżetu; nie ma go w kodzie aplikacji.</p>
+                        <form onsubmit="zapiszSubkontoWyplat(event)" class="flex gap-2">
+                            <label for="ust-subkonto" class="sr-only">Numer subkonta wypłat</label>
+                            <input type="text" id="ust-subkonto" inputmode="numeric" autocomplete="off" placeholder="26 cyfr numeru subkonta" class="input kwota">
+                            <button type="submit" id="btn-zapisz-subkonto" class="btn-secondary whitespace-nowrap">Zapisz</button>
+                        </form>
+                        <p id="ust-subkonto-info" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: KOPIA I EKSPORT otwartego budżetu -->
+                <div class="ust-strona contents hidden" data-strona="dane">
+                    <article class="card space-y-3">
+                        <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
+                        <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
+                        <button type="button" id="btn-zapisz-kopie" onclick="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
+                        <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami, kategoriami i ustawieniami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                    </article>
+                    <article class="card space-y-3">
+                        <h2 class="font-semibold text-sm">Eksport do Excela</h2>
+                        <div>
+                            <label for="ust-eksport-okres" class="field-label">Okres</label>
+                            <select id="ust-eksport-okres" class="input"></select>
+                        </div>
+                        <button type="button" onclick="eksportujCSV()" class="btn-secondary w-full">Pobierz plik CSV</button>
+                        <p class="text-[10px] text-[var(--muted)]">Kolumny A–F: Data, Kontrahent, Tytuł, Kwota, Typ, Kategoria / cel. Separator średnik – plik otwiera się wprost w polskim Excelu.</p>
+                    </article>
+                    <!-- Wczytanie kopii (11.3): plik → podgląd → potwierdzenie → „Cofnij” (rysuje kopia.js) -->
+                    <article class="card space-y-3 span-all" aria-labelledby="ust-wczytaj-tytul">
+                        <h2 id="ust-wczytaj-tytul" class="font-semibold text-sm">Wczytaj kopię</h2>
+                        <div id="ust-wczytaj" class="space-y-3"></div>
+                        <input type="file" id="ust-wczytaj-plik" accept=".json,application/json" class="hidden" onchange="wybierzPlikKopii(this)" aria-label="Plik kopii zapasowej">
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: OSOBY W BUDŻECIE WSPÓLNYM (migracja 2026-11f; treść rysuje konto.js) -->
+                <div class="ust-strona contents hidden" data-strona="czlonkowie">
+                    <article class="card space-y-3 span-all max-w-2xl w-full" aria-labelledby="czl-tytul">
+                        <h2 id="czl-tytul" class="font-semibold text-sm">Osoby w budżecie wspólnym</h2>
+                        <div id="czl-tresc" class="space-y-3"></div>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: ZMIANA HASŁA (konto.js) -->
+                <div class="ust-strona contents hidden" data-strona="haslo">
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Zmiana hasła</h2>
+                        <p id="haslo-konto" class="text-[11px] text-[var(--muted)]"></p>
+                        <form id="form-zmiana-hasla" onsubmit="zmienHaslo(event)" class="space-y-3" novalidate>
+                            <!-- Dla menedżerów haseł: do którego konta należy hasło -->
+                            <input type="email" id="haslo-login" autocomplete="username" class="hidden" tabindex="-1" aria-hidden="true" readonly>
+                            <div>
+                                <label for="haslo-obecne" class="field-label">Obecne hasło</label>
+                                <input type="password" id="haslo-obecne" required autocomplete="current-password" class="input">
+                            </div>
+                            <div>
+                                <label for="haslo-nowe" class="field-label">Nowe hasło</label>
+                                <input type="password" id="haslo-nowe" required minlength="8" maxlength="72" autocomplete="new-password" class="input" aria-describedby="haslo-nowe-wskazowka">
+                                <p id="haslo-nowe-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 8 znaków. Nie używaj hasła z innych serwisów.</p>
+                            </div>
+                            <div>
+                                <label for="haslo-nowe-2" class="field-label">Powtórz nowe hasło</label>
+                                <input type="password" id="haslo-nowe-2" required minlength="8" maxlength="72" autocomplete="new-password" class="input">
+                            </div>
+                            <p id="haslo-blad" role="alert" class="hidden text-xs text-[var(--c-spend)]"></p>
+                            <button type="submit" id="btn-zmien-haslo" class="btn-primary !w-auto px-6">Zmień hasło</button>
+                        </form>
+                        <p class="text-[11px] text-[var(--muted)]">Nie pamiętasz obecnego hasła? Wyloguj się i na ekranie logowania wybierz „Nie pamiętasz hasła?” – dostaniesz link na e-mail.</p>
+                    </article>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- DOLNY PASEK ZAKŁADEK (telefon) / LEWA KOLUMNA (komputer) -->
+        <nav class="app-nav" aria-label="Główne zakładki">
+            <div class="nav-brand">
+                <span class="nav-brand-icon"><i data-lucide="wallet" class="w-5 h-5"></i></span>
+                <span id="nav-brand-nazwa">Budżet wspólny</span>
+            </div>
+            <button type="button" onclick="zmienZakladke('pulpit')" class="nav-btn is-active" data-tab="pulpit" aria-current="page">
+                <i data-lucide="layout-dashboard"></i>
+                <span class="nav-label">Pulpit</span>
+            </button>
+            <button type="button" onclick="zmienZakladke('transakcje')" class="nav-btn" data-tab="transakcje">
+                <i data-lucide="receipt"></i>
+                <span class="nav-label">Transakcje</span>
+                <span id="badge-transakcje" class="hidden nav-badge" aria-label="Transakcje bez kategorii">0</span>
+            </button>
+            <button type="button" onclick="zmienZakladke('import')" class="nav-btn" data-tab="import">
+                <i data-lucide="file-up"></i>
+                <span class="nav-label">Import</span>
+            </button>
+            <button type="button" onclick="zmienZakladke('cele')" class="nav-btn" data-tab="cele">
+                <i data-lucide="target"></i>
+                <span class="nav-label">Cele</span>
+                <span id="badge-cele" class="hidden nav-badge" aria-label="Cele ze statusem Za wolno">0</span>
+            </button>
+            <button type="button" onclick="zmienZakladke('statystyki')" class="nav-btn" data-tab="statystyki">
+                <i data-lucide="chart-column-stacked"></i>
+                <span class="nav-label">Statystyki</span>
+            </button>
+        </nav>
+
+        <!-- KOMUNIKAT (10.2) -->
+        <div id="toast-powiadomienie" class="hidden toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <!-- LOGIKA APLIKACJI (kolejność ma znaczenie) -->
+    <script src="js/config.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/potwierdzenia.js"></script>
+    <script src="js/rules.js"></script>
+    <script src="js/calc.js"></script>
+    <script src="js/wykresy.js"></script>
+    <script src="js/db.js"></script>
+    <script src="js/views/pulpit.js"></script>
+    <script src="js/views/transakcje.js"></script>
+    <script src="js/views/paragony.js"></script>
+    <script src="js/banki.js"></script>
+    <script src="js/views/import.js"></script>
+    <script src="js/views/cele.js"></script>
+    <script src="js/views/statystyki.js"></script>
+    <script src="js/views/oszczednosci.js"></script>
+    <script src="js/views/kopia.js"></script>
+    <script src="js/views/konto.js"></script>
+    <script src="js/views/ustawienia.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
