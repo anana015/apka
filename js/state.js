@@ -1,91 +1,43 @@
-// =====================================================================
-// STAN APLIKACJI
-// =====================================================================
+// Jeden obiekt stanu aplikacji (jak w Budżecie). Widoki tylko go czytają;
+// zmiany robi app.js i akcje widoków, po czym wywołują render().
 
-const BUDZETY = {
-    wspolny: { nazwa: 'Budżet wspólny', krotko: 'Wspólny' },
-    osobisty: { nazwa: 'Budżet osobisty', krotko: 'Osobisty' }
-};
+import { TABELE } from './config.js';
+import { zbudujIndeksy } from './dane.js';
+import { dzisiaj, kluczMiesiaca } from './utils.js';
 
-let stan = {
-    // Który budżet jest otwarty: 'wspolny' (oboje) albo 'osobisty' (tylko zalogowana osoba).
-    // Wszystkie dane poniżej (transakcje, cele, kategorie, reguły, importy) dotyczą tego budżetu.
-    budzet: 'wspolny',
-    uzytkownikId: null,           // auth.uid() zalogowanej osoby
-    uzytkownikEmail: '',
-    schematBudzetow: null,        // null = nie sprawdzono, false = brak migracji (tylko wspólny), true = OK
-    // Kto ma dostęp do budżetu wspólnego (db.js: sprawdzDostepWspolny, migracja 2026-11f):
-    // { schemat, czlonek, maCzlonkow, maDane, czlonkowie: [{ user_id, email, dodano, to_ja }] } albo null
-    dostepWspolny: null,
-    odzyskiwanieHasla: false,     // otwarto link „ustaw nowe hasło” z e-maila (konto.js)
-
-    zakladka: 'pulpit',
-    poprzedniaZakladka: 'pulpit', // skąd otwarto Ustawienia
-    filtrTransakcji: 'wszystkie', // 'wszystkie' | 'brak' (do przypisania) | 'przypisane'
-    miesiacTransakcji: null,      // 'RRRR-MM' albo null = wszystkie miesiące
-    filtrKategorii: null,         // nazwa kategorii (wejście z Pulpitu) albo null
-    zakresTransakcji: null,       // { od, do } – zakres dat z Pulpitu albo null
-    podzial: null,                // edytowany podział: { id, czesci: [{ category, kwota }] }
-    szczegolyTransakcji: null,    // id transakcji z otwartym panelem „Notatka i paragon”
-    potwierdzenie: null,          // otwarte potwierdzenie na ekranie (potwierdzenia.js): { rodzaj, id, wTrakcie }
-    miesiacWybrany: null,
-    trybFiltraPulpit: 'miesiac', // 'miesiac' lub 'zakres'
-    pulpitDataOd: '',
-    pulpitDataDo: '',
-    otwartyCel: null,             // id celu z otwartymi szczegółami (8.3)
-    statKategoria: null, // kategoria wybrana w karcie „Trend kategorii”
-    transakcje: [],
-    cele: [],
-    // Kategorie: { id?, name, color, monthly_limit_gr, is_fixed, sort_order }
-    kategorie: kategorieDomyslne(),
-    kategorieZBazy: false,        // false = brak tabeli categories, używamy listy z config.js
-    kategoriaDoUsuniecia: null,   // id kategorii z otwartym potwierdzeniem usunięcia
-    wyborKategorii: null,         // Set nazw zaznaczonych w „Wybierz kategorie z listy” albo null (zamknięte)
-    importy: null,                // historia importów (null = brak tabeli imports)
-    ustawieniaBudzetu: null,      // wiersz ustawienia_budzetu otwartego budżetu: { id, konto_wyplat, zmieniono } albo null
-    ustawieniaBudzetuDostepne: false, // czy baza ma tabelę ustawienia_budzetu (migracja 2026-11f)
-
-    // Poziomy Ustawień (ustawienia.js): menu → strona → szczegóły kategorii
-    ustawieniaStrona: 'menu',     // klucz STRONY_USTAWIEN (ustawienia.js), np. 'kategorie', 'subkonto', 'czlonkowie', 'haslo'
-    ustawieniaKategoria: null,    // id kategorii otwartej w szczegółach (strona 'kategoria')
-    ustawieniaPowrot: null,       // { strona, kategoria } – dokąd cofa „‹” po skrócie (np. z kategorii do jej reguł)
-    kolejnoscKategorii: false,    // tryb „Zmień kolejność” na liście kategorii
-    wczytanieKopii: null          // „Wczytaj kopię” (kopia.js): wybrany plik, podgląd, wynik i dane do „Cofnij”
-};
-
-// Reguły posortowane od najnowszej (najnowsza pasująca wygrywa)
-let dynamiczneReguly = [];
-
-function nazwaBudzetu(budzet = stan.budzet) {
-    return (BUDZETY[budzet] || BUDZETY.wspolny).nazwa;
+/** Pusty komplet danych: tablica na każdą tabelę, ustawienia jako pojedynczy obiekt. */
+export function pusteDane() {
+  const dane = Object.fromEntries(TABELE.map((t) => [t, []]));
+  dane.settings = null;
+  return dane;
 }
 
-// Dane i ustawienia widoku, które należą do jednego budżetu – czyszczone przy przełączeniu
-// budżetu i wylogowaniu, żeby nic nie „przeciekło” na ekran drugiego budżetu.
-// (Poziom Ustawień zostaje – ustawienia.js cofa go wyżej, gdy strona nie pasuje do nowego budżetu.)
-function wyczyscDaneBudzetu() {
-    Object.assign(stan, {
-        transakcje: [],
-        cele: [],
-        kategorie: kategorieDomyslne(stan.budzet),
-        kategorieZBazy: false,
-        importy: null,
-        ustawieniaBudzetu: null,
-        wyborKategorii: null,
-        szczegolyTransakcji: null,
-        potwierdzenie: null,
-        filtrTransakcji: 'wszystkie',
-        miesiacTransakcji: null,
-        filtrKategorii: null,
-        zakresTransakcji: null,
-        podzial: null,
-        miesiacWybrany: null,
-        otwartyCel: null,
-        statKategoria: null,
-        kategoriaDoUsuniecia: null,
-        kolejnoscKategorii: false,
-        // Plik kopii i dane do „Cofnij wczytanie” dotyczą jednego budżetu i jednej osoby
-        wczytanieKopii: null
-    });
-    dynamiczneReguly = [];
+/** Podmienia dane i przelicza indeksy (Z38: wszystko liczone przy odczycie). */
+export function ustawDane(dane) {
+  state.dane = dane;
+  state.indeksy = zbudujIndeksy(dane);
 }
+
+export const state = {
+  faza: 'start',               // start | logowanie | aplikacja
+  podglad: false,              // brak konfiguracji Supabase – interfejs bez bazy
+  offline: typeof navigator !== 'undefined' ? !navigator.onLine : false,
+  uzytkownik: null,            // { id, email }
+  ladowanie: false,
+  blad: null,                  // komunikat błędu pobierania danych
+  zKopii: null,                // znacznik czasu kopii z IndexedDB, gdy dane pochodzą z urządzenia (tylko odczyt)
+  dane: pusteDane(),
+  indeksy: zbudujIndeksy(pusteDane()),   // przeliczane w ustawDane()
+  ui: {
+    ekran: 'pulpit',
+    parametr: null,            // np. id klienta w #/klienci/<id>
+    akcja: null,               // np. 'edycja' w #/klienci/<id>/edycja
+    zapytanie: {},             // np. { jednostka: '<id>' } z #/najmy/nowy?jednostka=<id>
+    adres: '',                 // ostatni location.hash – wykrywa przejście na inny ekran
+    form: null,                // stan otwartego formularza (js/formularz.js)
+    miesiac: kluczMiesiaca(dzisiaj()),
+    filtry: {},                // { [ekran]: 'nazwa-filtra' }
+    edycja: false,             // tryb edycji ekranu: rzadziej używane opcje widoczne po „Edytuj”; zeruje się przy zmianie adresu
+    szukaj: {},                // { [ekran]: 'tekst' }
+  },
+};

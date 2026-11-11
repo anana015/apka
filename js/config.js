@@ -1,109 +1,66 @@
-// =====================================================================
-// KONFIGURACJA
-// =====================================================================
+// Konfiguracja aplikacji. Uzupełnij po utworzeniu projektu Supabase (README.md, krok 2).
+// Klucz publiczny (anon albo publishable) może być w kodzie strony – dane chroni RLS.
+// Klucza service_role NIGDY tu nie wpisuj.
 
-const SUPABASE_URL = 'https://ggtvsotksmvepqdtsidb.supabase.co';
-// Klucz publishable (dawniej „anon”) MOŻE być jawny – dane chronią zasady RLS w bazie.
-// Nigdy nie wpisuj tu klucza secret / service_role: omija RLS i daje dostęp do wszystkich danych.
-const SUPABASE_ANON_KEY = 'sb_publishable_UHAZejqBYpSmUwbuCOb3hA_JfbUuZpB';
+export const CONFIG = Object.freeze({
+  supabaseUrl: 'https://sdxgdeyvlfgnnzwgkbce.supabase.co',
+  supabaseKey: 'sb_publishable_aFlZhbycefQPMj6imB3jFQ_KSLQmZ28',   // klucz publiczny (publishable)
+});
 
-// Numer subkonta wypłat ze skarbonek NIE jest w kodzie: ustawia się go w aplikacji
-// (Ustawienia → Subkonto wypłat) i trafia do tabeli ustawienia_budzetu (migracja 2026-11f).
+export const WERSJA = '0.17.0';
 
-const POMIN = 'Pomiń';
-const PREFIKS_CELU = 'SKARBONKA:';
+/** Tabele z rozdziału 4 – kolejność nie ma znaczenia, służy do pobierania i kopii zapasowej. */
+export const TABELE = Object.freeze([
+  'units', 'clients', 'contracts', 'rentals', 'rental_rates', 'charge_adjustments',
+  'bank_accounts', 'imports', 'payments', 'payers', 'deposits', 'client_notes',
+  'tax_payments', 'settings',
+  'expenses', 'cost_rules',   // etap 2 (migracja 010)
+]);
+/** Tabele, które mogą jeszcze nie istnieć (migracja nieuruchomiona) – brak = pusta lista zamiast błędu. */
+export const TABELE_OPCJONALNE = Object.freeze(['expenses', 'cost_rules']);
 
-// Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli, kolumny lub funkcji
-// (najnowszy skrypt; wymaga wcześniejszych: migracja_2026-11.sql, 2026-11b_budzet_osobisty,
-// 2026-11c_kategorie_oszczednosci, 2026-11d_notatki_paragony, 2026-11e_wczytaj_kopie)
-const PLIK_MIGRACJI = 'supabase/migracja_2026-11f_dostep_i_ustawienia.sql';
+/** Etykiety terminowości (5.5). Sprawdzane od góry. */
+export const PROGI_TERMINOWOSCI = Object.freeze({
+  minNaleznosci: 3,            // poniżej: „Za mało danych”
+  wzorowyMinNaleznosci: 6,     // „Wzorowy”: 100% i co najmniej 6 należności
+  terminowy: 0.9,              // co najmniej 90%
+  zdarzaSie: 0.7,              // 70–89%
+});
 
-// Kategorie startowe budżetu wspólnego. Przy pierwszym uruchomieniu trafiają do tabeli
-// categories, potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.
-const KATEGORIE_DOMYSLNE = [
-    'Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda',
-    'Zakupy spożywcze', 'Jedzenie na mieście', 'Kosmetyki i chemia domowa',
-    'Apteka', 'Wydatki na dom', 'Paliwo', 'Ubezpieczenie auta',
-    'Naprawy auta', 'Przegląd techniczny', 'Wymiana opon',
-    'Sport', 'Rozrywka (Kino/teatr)', 'Prezenty', 'Wakacje',
-    'Poduszka finansowa', 'Akcje/Obligacje', 'Nieplanowane'
-];
+/**
+ * Typy jednostek (Z1 + decyzja 3 z 10.11.2026: box rozdzielony na duży i mały).
+ * Kolejność = kolejność grup na ekranie Jednostki. Klucze muszą zgadzać się z units_type_check w bazie.
+ */
+export const TYPY_JEDNOSTEK = Object.freeze({
+  garaz: { nazwa: 'Garaż', mnoga: 'Garaże' },
+  kontener: { nazwa: 'Kontener', mnoga: 'Kontenery' },
+  box_duzy: { nazwa: 'Box XL (duży)', mnoga: 'Boxy XL (duże)' },
+  box_maly: { nazwa: 'Box XS (mały)', mnoga: 'Boxy XS (małe)' },
+});
 
-// Przelew z konta osobistego na konto wspólne (dokładka do wspólnego budżetu)
-const KATEGORIA_PRZELEW_WSPOLNE = 'Przelew na wspólne';
+/** Typy jednostek wynajmowane bez kaucji (prośba 11.11: boxy nie mają kaucji). */
+export const TYPY_BEZ_KAUCJI = Object.freeze(['box_duzy', 'box_maly']);
+export const bezKaucji = (typ) => TYPY_BEZ_KAUCJI.includes(typ);
 
-// Krótsza lista startowa budżetu osobistego
-const KATEGORIE_OSOBISTE_DOMYSLNE = [
-    KATEGORIA_PRZELEW_WSPOLNE, 'Jedzenie na mieście', 'Zakupy spożywcze', 'Ubrania',
-    'Kosmetyki', 'Zdrowie', 'Sport', 'Rozrywka', 'Subskrypcje', 'Transport',
-    'Prezenty', 'Hobby', 'Nieplanowane'
-];
+/** Wartości domyślne ustawień – takie same jak w supabase/schema.sql (tabela settings). */
+export const DOMYSLNE_USTAWIENIA = Object.freeze({
+  tolerance_days: 3,
+  punctuality_months: 12,
+  expiring_days: 30,
+  default_last_period: 'proporcjonalnie',
+  default_billing_day: 20,   // decyzja 11.11: wszyscy płacą 20., niezależnie od daty umowy
+  tax_period: 'kwartal',
+  tax_rate_low_bp: 850,
+  tax_rate_high_bp: 1250,
+  tax_threshold_gr: 10_000_000,
+  vat_limit_gr: 24_000_000,
+  tax_account: null,
+  data_start: '2026-01-01',
+  last_backup_at: null,
+  promotions: null,          // lista promocji (js/promocje.js); null = domyślna, migracja 007
+  contract_templates: null,  // wzory umów (js/umowy.js); migracja 011
+});
 
-// Kolory kategorii wg specyfikacji (pkt 10.4)
-const KOLORY_GRUP = {
-    Jedzenie: '#D08A2C', Mieszkanie: '#6B5BB5', Transport: '#3D8BBF', Rachunki: '#8A8F3A',
-    Rozrywka: '#C2508A', Zdrowie: '#2A9D8F', Zakupy: '#A0643C', Inne: '#7D8784'
-};
-
-// Przypisanie kategorii startowych do grup kolorów ze specyfikacji.
-// Używane też w „Strukturze wydatków” (Statystyki); nowe kategorie trafiają do grupy „Inne”.
-const GRUPA_KATEGORII = {
-    'Czynsz': 'Mieszkanie', 'Wydatki na dom': 'Mieszkanie',
-    'Internet': 'Rachunki', 'HBO Max/Apple': 'Rachunki', 'Rata Panda': 'Rachunki',
-    'Zakupy spożywcze': 'Jedzenie', 'Jedzenie na mieście': 'Jedzenie',
-    'Kosmetyki i chemia domowa': 'Zakupy', 'Prezenty': 'Zakupy',
-    'Apteka': 'Zdrowie', 'Sport': 'Zdrowie',
-    'Paliwo': 'Transport', 'Ubezpieczenie auta': 'Transport', 'Naprawy auta': 'Transport',
-    'Przegląd techniczny': 'Transport', 'Wymiana opon': 'Transport',
-    'Rozrywka (Kino/teatr)': 'Rozrywka', 'Wakacje': 'Rozrywka',
-    'Poduszka finansowa': 'Inne', 'Akcje/Obligacje': 'Inne', 'Nieplanowane': 'Inne',
-    // budżet osobisty
-    [KATEGORIA_PRZELEW_WSPOLNE]: 'Mieszkanie', 'Ubrania': 'Zakupy', 'Kosmetyki': 'Zakupy',
-    'Zdrowie': 'Zdrowie', 'Rozrywka': 'Rozrywka', 'Hobby': 'Rozrywka',
-    'Subskrypcje': 'Rachunki', 'Transport': 'Transport'
-};
-
-// Kategorie stałe na start (pole is_fixed w tabeli categories)
-const KATEGORIE_STALE = ['Czynsz', 'Internet', 'HBO Max/Apple', 'Rata Panda', 'Ubezpieczenie auta',
-    KATEGORIA_PRZELEW_WSPOLNE, 'Subskrypcje'];
-
-// Kategorie oszczędnościowe na start (pole is_saving): wydatek w nich liczy się jako
-// oszczędność (licznik „Odłożone”, stopa oszczędności), a nie jako wydatek
-const KATEGORIE_OSZCZEDNOSCIOWE = ['Akcje/Obligacje'];
-
-// Docelowa stopa oszczędności w % (pkt 9.1); użytkownik zmienia ją w Ustawieniach
-const DOCELOWA_STOPA_DOMYSLNA = 15;
-
-// ---- Oprocentowanie subkont celów -----------------------------------
-// Wartości domyślne dla celów, które nie mają własnych ustawień (pola interest_rate,
-// interest_threshold_gr w tabeli goals). Odsetki są szacowane: bank dopisuje je na
-// subkoncie, więc nie widać ich w wyciągu z konta głównego.
-const ODSETKI_STOPA_DOMYSLNA = 0.5;          // % w skali roku
-const ODSETKI_PROG_DOMYSLNY_GR = 100000;     // 1000 zł – odsetki tylko od nadwyżki ponad próg
-const PODATEK_BELKI = 0.19;                  // podatek od zysków kapitałowych
-const MIESIECY_MIEDZY_KAPITALIZACJAMI = 1;   // 1 = co miesiąc, 3 = co kwartał, 12 = raz w roku
-const DNI_W_ROKU_ODSETKI = 365;
-
-// Lista nazw startowych dla budżetu ('wspolny' | 'osobisty')
-function nazwyKategoriiDomyslnych(budzet = 'wspolny') {
-    return budzet === 'osobisty' ? KATEGORIE_OSOBISTE_DOMYSLNE : KATEGORIE_DOMYSLNE;
-}
-
-// Wiersz tabeli categories dla nazwy: kolor z grupy, „stała” wg listy, podana kolejność
-function wierszKategorii(name, sort_order) {
-    return {
-        name,
-        color: KOLORY_GRUP[GRUPA_KATEGORII[name]] || KOLORY_GRUP.Inne,
-        monthly_limit_gr: null,
-        is_fixed: KATEGORIE_STALE.includes(name),
-        // is_saving tylko gdy true – przed migracją 2026-11c kolumny nie ma i zwykłe kategorie
-        // muszą dać się zapisać
-        ...(KATEGORIE_OSZCZEDNOSCIOWE.includes(name) ? { is_saving: true } : {}),
-        sort_order
-    };
-}
-
-// Kategorie startowe jako wiersze tabeli categories
-function kategorieDomyslne(budzet = 'wspolny') {
-    return nazwyKategoriiDomyslnych(budzet).map((name, i) => wierszKategorii(name, (i + 1) * 10));
-}
+export const TOAST_MS = 2600;           // 12.2
+export const DNI_BEZ_IMPORTU = 14;      // 8.1, pasek „Brak importu z konta … od 14 dni”
+export const DNI_PRZYPOMNIENIA_KOPII = 30;
