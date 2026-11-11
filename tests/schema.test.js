@@ -10,7 +10,7 @@ const A = '00000000-0000-4000-8000-00000000000a';
 const B = '00000000-0000-4000-8000-00000000000b';
 const TABELE = ['units', 'clients', 'contracts', 'rentals', 'rental_rates', 'charge_adjustments',
   'bank_accounts', 'imports', 'payments', 'payers', 'deposits', 'client_notes',
-  'tax_payments', 'settings', 'expenses', 'cost_rules'];
+  'tax_payments', 'settings', 'expenses', 'cost_rules', 'gates', 'gate_access'];
 
 let db;
 
