@@ -1,14 +1,1 @@
-# Dane z banku i kopie zapasowe – nigdy do repozytorium
-*.csv
-budzet-*-kopia-*.json
-*.pdf
-*.xlsx
-
-# Klucze i pliki środowiskowe
-.env
-.env.*
-
-# Pliki systemowe i narzędzi
-.DS_Store
-Thumbs.db
 node_modules/
