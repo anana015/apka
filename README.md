@@ -2,7 +2,7 @@
 
 Aplikacja PWA do śledzenia czynszów za jednostki magazynowe: kto zapłacił, kto zalega, ile wpłynęło i ile ryczałtu zapłacić. Specyfikacja: „Najem magazynów – specyfikacja” v0.1 (projekt „Magazyny – apka, obsługa”).
 
-**Stan (0.11.0):** kroki 1a–1d zaimplementowane – Raporty, ryczałt kwartalny (`js/podatek.js`), eksporty CSV (`js/eksport.js`), kopia zapasowa JSON (`js/kopia.js` + funkcja `wczytaj_kopie`, migracja 004) i tryb offline (kopia ostatnio pobranych danych w IndexedDB, tylko odczyt). „Gdzie płaci” przy najmie i usuwanie wpłaty gotówką (0.7.1); prostszy widok z trybem „Edytuj” i jednostkami w Ustawieniach (0.7.2). Profile wyciągów: Nest Bank, Millennium, PKO BP, Alior; inne banki – ręczne mapowanie kolumn (0.8.0). Ręczny przelew, dzień płatności 20., wypowiedzenie, wpłata za jednostkę, ręczna kwota okresu (0.9.0). Promocje: wybór w nowym najmie, lista w Ustawieniach → Promocje (0.10.0). Boxy bez kaucji, „Dodaj kaucję” na karcie klienta, tryb „Edytuj” klienta jako zwarte ustawienia (0.11.0). Mapa placu na ekranie Jednostki – przełącznik „Lista / Mapa”, układ w `js/mapa.js` (0.16.0); statusy mapy, boxy XS/XL, eksport kosztów do CSV (0.16.1); karta klienta – notatki na górze, zwarty kontakt, terminowość do włączenia w Ustawieniach (0.16.2). Raporty „Brakujące wpłaty” i „Porównanie lat”, zysk na Pulpicie, kopia z dokumentami (ZIP), umowy do podpisania z wzorów Word (0.17.0). Szczegóły: dokument „stan-kodu” w projekcie.
+**Stan (0.11.0):** kroki 1a–1d zaimplementowane – Raporty, ryczałt kwartalny (`js/podatek.js`), eksporty CSV (`js/eksport.js`), kopia zapasowa JSON (`js/kopia.js` + funkcja `wczytaj_kopie`, migracja 004) i tryb offline (kopia ostatnio pobranych danych w IndexedDB, tylko odczyt). „Gdzie płaci” przy najmie i usuwanie wpłaty gotówką (0.7.1); prostszy widok z trybem „Edytuj” i jednostkami w Ustawieniach (0.7.2). Profile wyciągów: Nest Bank, Millennium, PKO BP, Alior; inne banki – ręczne mapowanie kolumn (0.8.0). Ręczny przelew, dzień płatności 20., wypowiedzenie, wpłata za jednostkę, ręczna kwota okresu (0.9.0). Promocje: wybór w nowym najmie, lista w Ustawieniach → Promocje (0.10.0). Boxy bez kaucji, „Dodaj kaucję” na karcie klienta, tryb „Edytuj” klienta jako zwarte ustawienia (0.11.0). Mapa placu na ekranie Jednostki – przełącznik „Lista / Mapa”, układ w `js/mapa.js` (0.16.0); statusy mapy, boxy XS/XL, eksport kosztów do CSV (0.16.1); karta klienta – notatki na górze, zwarty kontakt, terminowość do włączenia w Ustawieniach (0.16.2). Raporty „Brakujące wpłaty” i „Porównanie lat”, zysk na Pulpicie, kopia z dokumentami (ZIP), umowy do podpisania z wzorów Word (0.17.0). Bramy GSM – przypisywanie i usuwanie numerów klientów SMS-em z telefonu, przypomnienie o płatności, ranking terminowości, skróty po nowym najmie (0.18.0). Szczegóły: dokument „stan-kodu” w projekcie.
 
 ## Uruchomienie lokalne
 
@@ -31,6 +31,7 @@ Otwórz <http://localhost:8080>. Bez konfiguracji Supabase aplikacja działa w *
    | `008_ryczalt_liczniki.sql` | ryczałt w trzech licznikach (`tax_payments.grupa`) | 0.12.0 |
    | `009_klient_dokument.sql` | dokument tożsamości i PESEL klienta | 0.14.0 |
    | `010_koszty.sql` | koszty i reguły importu wypływów (`expenses`, `cost_rules`), `wczytaj_kopie` z nowymi tabelami | 0.15.0 |
+   | `012_bramy.sql` | sterowniki bram (`gates`: SIM, hasło, szablony poleceń, pozycje od 200) i dostępy klientów (`gate_access`); dane bram wpisuje się skryptem `supabase/jednorazowe/bramy_wpisz.sql` | 0.18.0 – bez niej ekran Bramy pokazuje instrukcję |
    | `011_wzory_umow.sql` | wzory umów (`settings.contract_templates`), bucket `umowy` przyjmuje też .docx | 0.17.0 – bez niej nie da się dodać wzoru umowy |
 3. W **Authentication**:
    - wyłącz zakładanie nowych kont (sign-ups) – aplikacja ma jednego użytkownika,
@@ -58,6 +59,7 @@ npm test        # Node 22+
 | `tests/schema.test.js` | `supabase/schema.sql` + migracje na prawdziwym PostgreSQL (PGlite): RLS, brak dostępu dla `anon`, test akceptacyjny 16, ograniczenia, bucket, `zapisz_pakiet` (wszystko albo nic, RLS w funkcji), ponowne uruchomienie migracji |
 | `tests/mapa.test.js` | mapa placu: liczba miejsc (70 w rzędach, 15 dużych i 6 małych boxów), brak nakładania, kody G05R1 / K05R1 i boxy, jednostki poza mapą i duplikaty |
 | `tests/umowy.test.js` | umowy z wzorów: kwota słownie, pola podzielone przez Worda na fragmenty, nagłówki i stopki, dane klienta i najmów (promocja, kaucja, konto) |
+| `tests/bramy.test.js` | bramy GSM: brama jednostki (R1–R4 → 1, boxy → 2), telefon +48, polecenia z szablonów, link sms: na iPhone i Androidzie, wolna pozycja od 200, termin usunięcia (koniec wypowiedzenia + 3 dni) |
 | `tests/pwa.test.js` | każdy plik aplikacji jest w pamięci podręcznej `sw.js`, manifest, odwołania w `index.html`, importy modułów |
 
 ## Wdrożenie

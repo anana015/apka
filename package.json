@@ -1,6 +1,6 @@
 {
   "name": "najem-magazynow",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Najem magazynów – rozliczenia czynszów (PWA + Supabase)",
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\"",

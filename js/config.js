@@ -7,7 +7,7 @@ export const CONFIG = Object.freeze({
   supabaseKey: 'sb_publishable_aFlZhbycefQPMj6imB3jFQ_KSLQmZ28',   // klucz publiczny (publishable)
 });
 
-export const WERSJA = '0.17.0';
+export const WERSJA = '0.18.0';
 
 /** Tabele z rozdziału 4 – kolejność nie ma znaczenia, służy do pobierania i kopii zapasowej. */
 export const TABELE = Object.freeze([
@@ -15,9 +15,10 @@ export const TABELE = Object.freeze([
   'bank_accounts', 'imports', 'payments', 'payers', 'deposits', 'client_notes',
   'tax_payments', 'settings',
   'expenses', 'cost_rules',   // etap 2 (migracja 010)
+  'gates', 'gate_access',     // bramy GSM (migracja 012)
 ]);
 /** Tabele, które mogą jeszcze nie istnieć (migracja nieuruchomiona) – brak = pusta lista zamiast błędu. */
-export const TABELE_OPCJONALNE = Object.freeze(['expenses', 'cost_rules']);
+export const TABELE_OPCJONALNE = Object.freeze(['expenses', 'cost_rules', 'gates', 'gate_access']);
 
 /** Etykiety terminowości (5.5). Sprawdzane od góry. */
 export const PROGI_TERMINOWOSCI = Object.freeze({

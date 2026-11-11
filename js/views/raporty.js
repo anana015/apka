@@ -1,7 +1,8 @@
 // Raporty (rozdz. 9): wybór okresu u góry i karty. Liczby z rozliczenia klientów, statystyki.js i podatek.js.
 // Adresy: #/raporty, #/raporty/ryczalt/RRRR-K (wpłata ryczałtu za kwartał, 6.5).
 
-import { TYPY_JEDNOSTEK } from '../config.js';
+import { PROGI_TERMINOWOSCI, TYPY_JEDNOSTEK } from '../config.js';
+import { terminowosc } from '../rozliczenia.js';
 import { najemTrwa, pelneMiesiaceWplat } from '../dane.js';
 import { formularz, maBledy, pole, stanFormularza, wartosciFormularza, zapisz } from '../formularz.js';
 import {
@@ -21,7 +22,9 @@ import {
 import { doCsv } from '../csv.js';
 import { pobierzPlik } from '../ui.js';
 import { walidujWplateRyczaltu } from '../walidacja.js';
-import { opisProgu, pobierzEksport, rozliczeniaKlientow, ustawienia, wyborMiesiaca, pokazWybranyMiesiac } from './wspolne.js';
+import {
+  opisProgu, pobierzEksport, pokazTerminowosc, rozliczeniaKlientow, ustawienia, wyborMiesiaca, pokazWybranyMiesiac,
+} from './wspolne.js';
 
 const MIN_PELNYCH_MIESIECY = 2;   // 9 i 12.3
 
@@ -303,6 +306,38 @@ function eksportTabeli(s, rodzaj) {
   }
 }
 
+/** Karta 2 (rozdz. 9, wzór 5.5): terminowość ogółem i rankingi klientów z okna terminowości (domyślnie 12 mies.). */
+function kartaTerminowosci(s) {
+  const u = ustawienia(s);
+  const dzis = dzisiaj();
+  const wyniki = [...rozliczeniaKlientow(s).entries()]
+    .map(([id, r]) => ({ k: s.indeksy.klienci.get(id),
+      t: terminowosc(r.pozycje, { dzis, tolerancja: u.tolerance_days, miesiecy: u.punctuality_months, progi: PROGI_TERMINOWOSCI }) }))
+    .filter((x) => x.k && !x.k.archived && x.t.liczba >= PROGI_TERMINOWOSCI.minNaleznosci);
+  if (!wyniki.length) return '<p class="wyciszony">Za mało danych – ranking pojawi się, gdy klienci będą mieli co najmniej '
+    + `${PROGI_TERMINOWOSCI.minNaleznosci} rozliczone należności.</p>`;
+  const ocenione = wyniki.reduce((x, w) => x + w.t.liczba, 0);
+  const terminowe = wyniki.reduce((x, w) => x + Math.round(w.t.procent * w.t.liczba), 0);
+  const najlepsi = [...wyniki].sort((a, b) => b.t.procent - a.t.procent || b.t.liczba - a.t.liczba
+    || a.k.name.localeCompare(b.k.name, 'pl')).slice(0, 10);
+  const spoznieni = wyniki.filter((w) => w.t.procent < 1).sort((a, b) => a.t.procent - b.t.procent
+    || b.t.srednieOpoznienie - a.t.srednieOpoznienie).slice(0, 10);
+  const wiersz = ({ k, t }) => `<tr><td><a href="#/klienci/${encodeURIComponent(k.id)}">${esc(k.name)}</a>
+    <br><span class="wyciszony maly">${t.liczba} należności</span></td>
+    <td class="kwota">${procent(t.procent)}</td><td class="kwota">${t.srednieOpoznienie ? `${t.srednieOpoznienie} dni` : '—'}</td></tr>`;
+  const tabela = (lista) => `<div class="tabela-przewijana"><table class="tabela"><thead><tr><th scope="col">Klient</th>
+    <th scope="col" class="kwota">W terminie</th><th scope="col" class="kwota">Śr. spóźn.</th></tr></thead>
+    <tbody>${lista.map(wiersz).join('')}</tbody></table></div>`;
+  const etykiety = ['Wzorowy', 'Terminowy', 'Zdarza się spóźnić', 'Spóźnia się']
+    .map((e) => `${e}: <strong>${wyniki.filter((w) => w.t.etykieta === e).length}</strong>`).join(' · ');
+  return `<p>Terminowo zapłacone: <strong>${procent(terminowe / ocenione)}</strong> z ${ocenione} należności
+      (${wyniki.length} klientów, ostatnie ${u.punctuality_months} mies.)</p>
+    <p class="maly">${etykiety}</p>
+    <h3 class="maly">Najbardziej terminowi</h3>${tabela(najlepsi)}
+    <h3 class="maly">Najczęściej spóźnieni</h3>${spoznieni.length ? tabela(spoznieni) : '<p class="wyciszony">Nikt się nie spóźnia.</p>'}
+    <p class="podpowiedz">Terminowo = zapłacone najpóźniej ${u.tolerance_days} dni po terminie. Stan na dziś, niezależnie od okresu u góry.</p>`;
+}
+
 /** Ryczałt roku (6.2–6.5) osobno dla każdego licznika: Millennium, pozostałe konta, gotówka. */
 function kartaRyczaltu(s, rok) {
   const u = ustawienia(s);
@@ -439,6 +474,7 @@ export default {
         ${karta('zysk', 'Koszty i zysk', kartaZysku(s, z))}
         ${karta('vat', `Limity zwolnienia z VAT ${rok}`, kartaVat(s, rok))}
         ${karta('brakujace', 'Brakujące wpłaty', kartaBrakujacych(s, okres, z), 'szeroka')}
+        ${pokazTerminowosc() ? karta('terminowosc', 'Terminowość', kartaTerminowosci(s)) : ''}
         ${karta('dluznicy', 'Dłużnicy (stan na dziś)', kartaDluznikow(s))}
         ${karta('jednostki', 'Przychód według jednostek', kartaJednostek(s, z))}
         ${karta('oblozenie', 'Obłożenie (dziś)', kartaOblozenia(s))}

@@ -133,6 +133,9 @@ function przeglad(s) {
         <p class="podpowiedz">Dane pojedynczej jednostki zmienisz w jej szczegółach (Jednostki → jednostka → Edytuj).</p>`)}
       ${sekcjaKarty('promocje', 'Promocje', listaPromocjiKarta(s))}
       ${sekcjaKarty('wzory', 'Wzory umów', kartaWzorow(s))}
+      ${sekcjaKarty('bramy', 'Bramy', `<p>${s.dane.gates?.length ? `Sterowniki: ${s.dane.gates.length}. Numery SIM, hasła i polecenia
+          są tylko w bazie (Supabase → tabela gates).` : 'Brak danych bram – uruchom migrację 012 i supabase/jednorazowe/bramy_wpisz.sql.'}</p>
+        <div class="pasek-akcji">${przycisk({ tekst: 'Bramy – przypisania i usunięcia', href: '#/bramy', drugi: true })}</div>`)}
       ${sekcjaKarty('rozliczenia', 'Rozliczenia', pola([
         ['Tolerancja terminowości', `${u.tolerance_days} dni`],
         ['Okno terminowości', `${u.punctuality_months} mies.`],
@@ -143,7 +146,7 @@ function przeglad(s) {
       ${sekcjaKarty('karta-klienta', 'Karta klienta', `${pola([['Karta „Terminowość”', pokazTerminowosc() ? 'widoczna' : 'ukryta']])}
         <div class="pasek-akcji"><button type="button" class="przycisk drugi" data-akcja="terminowosc-klienta">
           ${pokazTerminowosc() ? 'Ukryj terminowość' : 'Pokaż terminowość'}</button></div>
-        <p class="podpowiedz">Ustawienie dotyczy tego urządzenia.</p>`)}
+        <p class="podpowiedz">Dotyczy karty klienta i karty „Terminowość” w Raportach. Ustawienie dotyczy tego urządzenia.</p>`)}
       ${sekcjaKarty('podatek', 'Podatek', pola([
         ['Wpłaty ryczałtu', u.tax_period === 'miesiac' ? 'miesięcznie' : 'kwartalnie'],
         ['Stawki', `${formatProcentBp(u.tax_rate_low_bp)} / ${formatProcentBp(u.tax_rate_high_bp)}`],

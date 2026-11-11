@@ -6,6 +6,7 @@ import { koniecUmowy } from './jednostki.js';
 import { biezacyNajem, doPrzypisania, najemTrwa, planowanyKoniec } from '../dane.js';
 import { pilneZadania } from '../zadania.js';
 import { nazwaKategorii, zyskZakresu } from '../koszty.js';
+import { bramyDoZrobienia } from '../bramy.js';
 import { limityVat, PROGI_VAT } from '../statystyki.js';
 import {
   daneGrupy, datyKwartalu, etykietaKwartalu, GRUPY_RYCZALTU, kwartalDaty, kwartalyDoZaplaty, nazwaGrupy, progRoku,
@@ -35,6 +36,16 @@ function paskiOstrzezen(s) {
   if (z) {
     paski.push(`<button type="button" class="baner ostrzezenie pelny-wiersz" data-akcja="idz"
       data-ekran="zadania" data-filtr="do-zrobienia">${odmiana(z, ['zadanie', 'zadania', 'zadań'])} na dziś i po terminie ›</button>`);
+  }
+  // Bramy GSM: numery do usunięcia (po końcu najmu + 3 dni) i do przypisania.
+  if (s.dane.gates?.length) {
+    const b = bramyDoZrobienia(s, dzisiaj());
+    if (b.doUsuniecia.length) {
+      paski.push(`<a class="baner blad pelny-wiersz" href="#/bramy">Bramy: ${odmiana(b.doUsuniecia.length, ['numer', 'numery', 'numerów'])} do usunięcia ›</a>`);
+    }
+    if (b.doPrzypisania.length) {
+      paski.push(`<a class="baner ostrzezenie pelny-wiersz" href="#/bramy">Bramy: ${odmiana(b.doPrzypisania.length, ['numer czeka', 'numery czekają', 'numerów czeka'])} na przypisanie ›</a>`);
+    }
   }
   // Umowy na czas określony kończące się w ciągu settings.expiring_days dni albo już wygasłe (Z10).
   const dzis = dzisiaj();
