@@ -11,7 +11,7 @@
 // Po zmianie listy plików albo strategii zmień WERSJA – stare kopie zostaną usunięte.
 // =====================================================================
 
-const WERSJA = '2026-11-13';
+const WERSJA = '2026-11-13.2';
 const CACHE_APLIKACJI = `budzet-aplikacja-${WERSJA}`;
 const CACHE_CZCIONEK = 'budzet-czcionki-v1';
 const LIMIT_SIECI_MS = 4000;

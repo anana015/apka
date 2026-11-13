@@ -232,6 +232,11 @@
                         <button type="button" data-klik="zmienFiltrTransakcji('brak')" id="btn-filtr-brak" class="chip" aria-pressed="false">Do przypisania (<span id="licznik-brak">0</span>)</button>
                         <button type="button" data-klik="zmienFiltrTransakcji('przypisane')" id="btn-filtr-przypisane" class="chip" aria-pressed="false">Przypisane (<span id="licznik-przypisane">0</span>)</button>
                     </div>
+                    <div>
+                        <label for="transakcje-szukaj" class="sr-only">Szukaj transakcji</label>
+                        <input type="search" id="transakcje-szukaj" data-wpis="szukajTransakcji(this.value)" autocomplete="off" enterkeyhint="search"
+                            placeholder="Szukaj: kontrahent, tytuł, notatka, kategoria albo kwota (np. 123,45)" class="input" aria-describedby="transakcje-podsumowanie">
+                    </div>
                     <div id="transakcje-miesiace" class="flex gap-2 overflow-x-auto pb-1 no-scrollbar min-[900px]:flex-wrap" role="group" aria-label="Wybór miesiąca"></div>
                     <label class="flex items-center justify-between gap-3 text-xs pt-1 border-t border-[var(--border)]">
                         <span class="pt-2">
@@ -697,7 +702,10 @@
         </nav>
 
         <!-- KOMUNIKAT (10.2) -->
-        <div id="toast-powiadomienie" class="hidden toast" role="status" aria-live="polite"></div>
+        <div id="toast-powiadomienie" class="hidden toast" role="status" aria-live="polite" data-escape="zakonczKomunikat()">
+            <span id="toast-tekst"></span>
+            <button type="button" id="toast-akcja" class="hidden toast-akcja" data-klik="wykonajAkcjeKomunikatu()"></button>
+        </div>
     </div>
 
     <!-- LOGIKA APLIKACJI (kolejność ma znaczenie; defer = po wczytaniu HTML, w tej kolejności) -->

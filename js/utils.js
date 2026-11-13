@@ -45,6 +45,17 @@ function zlZeZnakiem(grosze) {
     return `${znak}${liczba(Math.abs(grosze) / 100, 2)} zł`;
 }
 
+// Jak długo pokazywać komunikat: 2,6 s (specyfikacja 10.2) + 50 ms na znak, najwyżej 10 s;
+// z przyciskiem (np. „Cofnij”) co najmniej 8 s – tyle jest czasu na zmianę zdania
+const KOMUNIKAT_MIN_MS = 2600;
+const KOMUNIKAT_NA_ZNAK_MS = 50;
+const KOMUNIKAT_MAKS_MS = 10000;
+const KOMUNIKAT_Z_AKCJA_MS = 8000;
+function czasKomunikatu(tresc, zAkcja = false) {
+    const czas = Math.min(KOMUNIKAT_MAKS_MS, KOMUNIKAT_MIN_MS + String(tresc || '').length * KOMUNIKAT_NA_ZNAK_MS);
+    return zAkcja ? Math.max(czas, KOMUNIKAT_Z_AKCJA_MS) : czas;
+}
+
 // Polska odmiana: odmiana(2, 'subkonto', 'subkonta', 'subkont') -> 'subkonta'
 function odmiana(n, jeden, kilka, wiele) {
     if (n === 1) return jeden;

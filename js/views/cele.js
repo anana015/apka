@@ -448,7 +448,18 @@ async function usunCel(id) {
     if (!udane) return;
     stan.cele = stan.cele.filter(c => String(c.id) !== String(id));
     odswiezPoZmianie();
-    pokazKomunikat(cel ? `Usunięto cel ${cel.name}` : 'Usunięto cel');
+    if (!cel) return pokazKomunikat('Usunięto cel');
+    // Transakcje przypisane ręcznie (SKARBONKA:<id>) zostają – po przywróceniu celu z tym samym id znów do niego trafią
+    const kopia = { ...cel };
+    pokazKomunikat(`Usunięto cel ${cel.name}`, { akcja: { etykieta: COFNIJ, wykonaj: () => przywrocCel(kopia) } });
+}
+
+async function przywrocCel(kopia) {
+    const wiersz = await przywrocWiersz('goals', kopia, 'Nie przywrócono celu');
+    if (!wiersz) return;
+    stan.cele = [...stan.cele, wiersz];
+    odswiezPoZmianie();
+    pokazKomunikat(`Przywrócono cel ${wiersz.name}`);
 }
 
 // =====================================================================

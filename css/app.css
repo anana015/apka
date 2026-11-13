@@ -202,7 +202,14 @@ h1, h2, h3, h4 { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
     bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom));
     background: #111827; color: #fff; font-size: 13px; text-align: center;
     padding: 10px 16px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    display: flex; align-items: center; justify-content: center; gap: 4px 14px; flex-wrap: wrap;
 }
+/* Przycisk w komunikacie („Cofnij”) – jasny akcent na ciemnym tle, kontrast 10,6 : 1 */
+.toast-akcja {
+    font-weight: 700; color: #7FD8C9; text-decoration: underline; text-underline-offset: 3px;
+    padding: 4px 6px; margin: -4px -6px; border-radius: 6px;
+}
+.toast-akcja:focus-visible { outline: 2px solid #7FD8C9; outline-offset: 2px; }
 
 /* Tryb offline (offline.js): szary nagłówek – od razu widać, że dane są tylko do podglądu.
    Kontrast tekstu: #FFFFFF / #5A6B67 5,6 : 1, #0B1F1C / #9DB0AB 7,5 : 1 (WCAG AA). */

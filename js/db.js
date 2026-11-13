@@ -305,3 +305,16 @@ function odswiezPoZmianie() {
     przeliczMiesiace();
     odswiezInterfejs();
 }
+
+// „Cofnij” po usunięciu: ten sam wiersz (z tym samym id) wraca do bazy.
+// Zwraca zapisany wiersz albo null (komunikat o błędzie już pokazany).
+async function przywrocWiersz(tabela, kopia, poczatekBledu = 'Nie cofnięto') {
+    const { data, error } = await supabaseClient.from(tabela).insert([kopia]).select();
+    if (error) {
+        pokazKomunikat(komunikatBledu(error, poczatekBledu));
+        return null;
+    }
+    return (data && data[0]) || kopia;
+}
+
+const COFNIJ = 'Cofnij';

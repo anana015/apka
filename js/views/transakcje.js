@@ -38,6 +38,36 @@ function wybierzMiesiacTransakcji(m) {
     odswiezTransakcje();
 }
 
+// Wyszukiwarka: zapis po krótkiej przerwie w pisaniu (lista nie przerysowuje się przy każdej literze)
+const OPOZNIENIE_SZUKANIA_MS = 150;
+let timerSzukania = null;
+function szukajTransakcji(tekst) {
+    clearTimeout(timerSzukania);
+    timerSzukania = setTimeout(() => {
+        stan.szukajTransakcji = String(tekst || '').trim();
+        stan.podzial = null;
+        stan.potwierdzenie = null;
+        odswiezTransakcje();
+    }, OPOZNIENIE_SZUKANIA_MS);
+}
+
+// Czy transakcja pasuje do wyszukiwania. Każde słowo zapytania musi wystąpić w kontrahencie,
+// tytule, notatce, dacie, kategorii lub nazwie celu (bez wielkości liter i polskich znaków)
+// albo w kwocie („123,45”, „123.45”, „-123,45” – znak nie ma znaczenia).
+// k – gotowa klasyfikacja (kategoria z reguły też się liczy).
+function pasujeDoSzukania(t, zapytanie, k = null) {
+    const slowa = normalizuj(zapytanie).split(/\s+/).filter(Boolean);
+    if (slowa.length === 0) return true;
+    const tekst = normalizuj([
+        t.counterparty, t.title, t.note, t.booked_on,
+        k && k.kategoria, k && k.cel && k.cel.name,
+        ...(k && k.podzial ? k.podzial.map(c => c.category) : [])
+    ].filter(Boolean).join(' '));
+    const kwota = (Math.abs(t.amount_gr) / 100).toFixed(2);
+    const kwoty = `${kwota} ${kwota.replace('.', ',')}`;
+    return slowa.every(s => tekst.includes(s) || kwoty.includes(s.replace(/^[+\-\u2212]/, '')));
+}
+
 function przejdzDoBezKategorii() {
     zmienZakladke('transakcje', { filtr: 'brak' });
 }
@@ -214,6 +244,7 @@ function odswiezTransakcje() {
     const filtr = stan.filtrTransakcji || 'wszystkie';
     const kategoria = stan.filtrKategorii;
     const zakres = stan.zakresTransakcji;
+    const szukaj = stan.szukajTransakcji || '';
 
     rysujFiltrKategorii(kategoria, zakres);
 
@@ -226,14 +257,16 @@ function odswiezTransakcje() {
             const k = klasyfikuj(t);
             return { t, k, doPrzypisania: czyKlasyfikacjaDoPrzypisania(k) };
         })
-        .filter(w => (!kategoria || pasujeDoKategorii(w.k, kategoria)) && (!zakres || pasujeDoZakresu(w.t, zakres)));
+        .filter(w => (!kategoria || pasujeDoKategorii(w.k, kategoria)) && (!zakres || pasujeDoZakresu(w.t, zakres)) &&
+            (!szukaj || pasujeDoSzukania(w.t, szukaj, w.k)));
 
     // Miesiące z transakcjami (najnowszy pierwszy); nieistniejący wybór -> wszystkie
     const miesiace = Array.from(new Set(wszystkie.map(w => w.t.booked_on.substring(0, 7)))).sort().reverse();
     if (stan.miesiacTransakcji && !miesiace.includes(stan.miesiacTransakcji)) {
         stan.miesiacTransakcji = WSZYSTKIE_MIESIACE;
     }
-    const miesiac = zakres ? WSZYSTKIE_MIESIACE : stan.miesiacTransakcji;
+    // Wyszukiwanie i zakres dat z Pulpitu obejmują wszystkie miesiące
+    const miesiac = zakres || szukaj ? WSZYSTKIE_MIESIACE : stan.miesiacTransakcji;
     const wOkresie = miesiac ? wszystkie.filter(w => w.t.booked_on.startsWith(miesiac)) : wszystkie;
 
     // Filtry z licznikami dla wybranego okresu
@@ -252,7 +285,7 @@ function odswiezTransakcje() {
     // Wybór miesiąca: liczba pozycji pasujących do filtra w każdym miesiącu.
     // Przy zakresie dat z Pulpitu okres jest już ustalony – miesięcy nie pokazujemy.
     const kontenerMiesiecy = document.getElementById('transakcje-miesiace');
-    kontenerMiesiecy.classList.toggle('hidden', !!zakres);
+    kontenerMiesiecy.classList.toggle('hidden', !!zakres || !!szukaj);
     const naMiesiac = {};
     wszystkie.forEach(w => {
         if (!pasujeDoFiltra(w, filtr)) return;
@@ -282,6 +315,7 @@ function odswiezTransakcje() {
         const nazwaKat = kategoria === BEZ_KATEGORII ? 'bez kategorii' : `w kategorii ${kategoria}`;
         const komunikat = stan.transakcje.length === 0
             ? 'Brak transakcji. Zaimportuj wyciąg w zakładce Import.'
+            : szukaj ? `Nic nie pasuje do „${szukaj}”${filtr !== 'wszystkie' || kategoria ? ' przy wybranych filtrach' : ''}.`
             : kategoria ? `Brak transakcji ${nazwaKat}${wOkresieTekst}.`
             : filtr === 'brak' ? `Wszystkie transakcje${wOkresieTekst} mają kategorię.`
             : filtr === 'przypisane' ? `Brak przypisanych transakcji${wOkresieTekst}.`
@@ -293,11 +327,12 @@ function odswiezTransakcje() {
     const s = podsumuj(dane.map(w => w.t));
     // Przy filtrze kategorii liczymy tylko części z tej kategorii – suma = kwota z Pulpitu
     const wKategorii = kategoria ? (s.kategorie[kategoria] || s.kategorieOszczednosci[kategoria] || 0) : 0;
-    podsumowanie.innerText = kategoria
+    const prefiksSzukania = szukaj ? `Wyniki dla „${szukaj}” we wszystkich miesiącach: ` : '';
+    podsumowanie.innerText = prefiksSzukania + (kategoria
         ? `${dane.length} ${odmianaTransakcji(dane.length)} · razem w kategorii ${zl(wKategorii, 2)}`
         : `${dane.length} ${odmianaTransakcji(dane.length)} · wpływy ${zl(s.przychody + s.wyplaty, 2)} · wydatki ${zl(s.wydatki, 2)}` +
             (s.zwroty ? ` (po odjęciu zwrotów ${zl(s.zwroty, 2)})` : '') +
-            (s.inwestycje ? ` · odłożone w kategoriach ${zl(s.inwestycje, 2)}` : '');
+            (s.inwestycje ? ` · odłożone w kategoriach ${zl(s.inwestycje, 2)}` : ''));
 
     // „Wszystkie miesiące”: sekcje miesięcy od najnowszego, w środku data rosnąco
     const grupy = {};
@@ -350,7 +385,8 @@ function panelUsuwaniaTransakcji(t) {
     });
 }
 
-// Wywoływane tylko przyciskiem „Usuń” w potwierdzeniu
+// Wywoływane tylko przyciskiem „Usuń” w potwierdzeniu.
+// Plik paragonu kasujemy dopiero, gdy minie czas na „Cofnij” (komunikat zniknie bez cofnięcia).
 async function usunTransakcje(id) {
     const usuwana = stan.transakcje.find(t => String(t.id) === String(id));
     const udane = await wykonajPotwierdzenie('transakcja', id, odswiezTransakcje, async () => {
@@ -359,13 +395,25 @@ async function usunTransakcje(id) {
             pokazKomunikat(komunikatBledu(error, 'Nie udało się usunąć transakcji'));
             return false;
         }
-        if (usuwana) await usunPlikParagonu(usuwana.receipt_path);
         stan.transakcje = stan.transakcje.filter(t => String(t.id) !== String(id));
         return true;
     });
     if (!udane) return;
     odswiezPoZmianie();
-    pokazKomunikat('Usunięto transakcję');
+    if (!usuwana) return pokazKomunikat('Usunięto transakcję');
+    const kopia = { ...usuwana };
+    pokazKomunikat(`Usunięto transakcję: ${usuwana.counterparty || usuwana.title || zlZeZnakiem(usuwana.amount_gr)}`, {
+        akcja: { etykieta: COFNIJ, wykonaj: () => przywrocTransakcje(kopia) },
+        poWygasnieciu: () => usunPlikParagonu(kopia.receipt_path)
+    });
+}
+
+async function przywrocTransakcje(kopia) {
+    const wiersz = await przywrocWiersz('transakcje', kopia, 'Nie przywrócono transakcji');
+    if (!wiersz) return usunPlikParagonu(kopia.receipt_path); // nie wróciła – plik już niepotrzebny
+    stan.transakcje = [...stan.transakcje, wiersz];
+    odswiezPoZmianie();
+    pokazKomunikat('Przywrócono transakcję');
 }
 
 // ---- Zapis kategorii -------------------------------------------------
@@ -378,6 +426,8 @@ async function zmienKategorieTransakcji(id, nowaKat) {
     const t = stan.transakcje.find(x => String(x.id) === String(id));
     if (!t) return;
     const wartosc = nowaKat || null;
+    const poprzednia = t.category_manual ?? null;
+    let zmianaReguly = null; // do „Cofnij”: { nowa: regula } albo { regula, poprzedniaKategoria }
 
     const { error } = await supabaseClient
         .from('transakcje')
@@ -408,6 +458,7 @@ async function zmienKategorieTransakcji(id, nowaKat) {
                     .select();
                 if (!errRule && insData && insData.length > 0) {
                     dynamiczneReguly.unshift(insData[0]);
+                    zmianaReguly = { nowa: insData[0] };
                     zapisano = true;
                 }
             } else if (istniejaca.category !== wartosc) {
@@ -416,6 +467,7 @@ async function zmienKategorieTransakcji(id, nowaKat) {
                     .update({ category: wartosc })
                     .eq('id', istniejaca.id);
                 if (!errUpd) {
+                    zmianaReguly = { regula: istniejaca, poprzedniaKategoria: istniejaca.category };
                     istniejaca.category = wartosc;
                     dynamiczneReguly = [istniejaca, ...dynamiczneReguly.filter(r => r !== istniejaca)];
                     zapisano = true;
@@ -432,7 +484,32 @@ async function zmienKategorieTransakcji(id, nowaKat) {
     }
 
     odswiezInterfejs();
-    pokazKomunikat(komunikat);
+    pokazKomunikat(komunikat, {
+        akcja: { etykieta: COFNIJ, wykonaj: () => cofnijZmianeKategorii(id, poprzednia, zmianaReguly) }
+    });
+}
+
+// „Cofnij” po zmianie kategorii: poprzedni wybór transakcji i reguła sprzed zmiany
+async function cofnijZmianeKategorii(id, poprzednia, zmianaReguly) {
+    const t = stan.transakcje.find(x => String(x.id) === String(id));
+    if (!t) return;
+    const { error } = await supabaseClient.from('transakcje').update({ category_manual: poprzednia }).eq('id', id);
+    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie cofnięto zmiany'));
+    t.category_manual = poprzednia;
+
+    let bladReguly = null;
+    if (zmianaReguly && zmianaReguly.nowa) {
+        ({ error: bladReguly } = await supabaseClient.from('rules').delete().eq('id', zmianaReguly.nowa.id));
+        if (!bladReguly) dynamiczneReguly = dynamiczneReguly.filter(r => r !== zmianaReguly.nowa);
+    } else if (zmianaReguly && zmianaReguly.regula) {
+        const { regula, poprzedniaKategoria } = zmianaReguly;
+        ({ error: bladReguly } = await supabaseClient.from('rules').update({ category: poprzedniaKategoria }).eq('id', regula.id));
+        if (!bladReguly) regula.category = poprzedniaKategoria;
+    }
+    odswiezInterfejs();
+    pokazKomunikat(bladReguly
+        ? komunikatBledu(bladReguly, 'Przywrócono kategorię transakcji, ale nie regułę')
+        : 'Cofnięto zmianę kategorii');
 }
 
 // =====================================================================

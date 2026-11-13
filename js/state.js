@@ -32,6 +32,7 @@ let stan = {
     miesiacTransakcji: null,      // 'RRRR-MM' albo null = wszystkie miesiące
     filtrKategorii: null,         // nazwa kategorii (wejście z Pulpitu) albo null
     zakresTransakcji: null,       // { od, do } – zakres dat z Pulpitu albo null
+    szukajTransakcji: '',         // tekst z wyszukiwarki w Transakcjach (szuka we wszystkich miesiącach)
     podzial: null,                // edytowany podział: { id, czesci: [{ category, kwota }] }
     szczegolyTransakcji: null,    // id transakcji z otwartym panelem „Notatka i paragon”
     potwierdzenie: null,          // otwarte potwierdzenie na ekranie (potwierdzenia.js): { rodzaj, id, wTrakcie }
@@ -86,6 +87,7 @@ function wyczyscDaneBudzetu() {
         miesiacTransakcji: null,
         filtrKategorii: null,
         zakresTransakcji: null,
+        szukajTransakcji: '',
         podzial: null,
         miesiacWybrany: null,
         otwartyCel: null,

@@ -722,7 +722,17 @@ async function usunKategorie(id) {
     if (zeSzczegolow) Object.assign(stan, { ustawieniaStrona: 'kategorie', ustawieniaKategoria: null });
     odswiezInterfejs();
     if (zeSzczegolow) ustawFokusStrony();
-    pokazKomunikat(`Usunięto kategorię ${k.name}`);
+    const kopia = { ...k };
+    pokazKomunikat(`Usunięto kategorię ${k.name}`, { akcja: { etykieta: COFNIJ, wykonaj: () => przywrocKategorie(kopia) } });
+}
+
+async function przywrocKategorie(kopia) {
+    if (kategoriaPoNazwie(kopia.name)) return pokazKomunikat(`Kategoria „${kopia.name}” już znowu istnieje`);
+    const wiersz = await przywrocWiersz('categories', kopia, 'Nie przywrócono kategorii');
+    if (!wiersz) return;
+    stan.kategorie = [...stan.kategorie, wiersz].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    odswiezInterfejs();
+    pokazKomunikat(`Przywrócono kategorię ${wiersz.name}`);
 }
 
 // =====================================================================
@@ -1094,7 +1104,18 @@ async function usunRegule(id) {
     if (error) return pokazKomunikat(komunikatBledu(error, 'Nie usunięto reguły'));
     dynamiczneReguly = dynamiczneReguly.filter(x => x !== r);
     odswiezInterfejs();
-    pokazKomunikat(`Usunięto regułę ${r.phrase}`);
+    const kopia = { ...r };
+    pokazKomunikat(`Usunięto regułę ${r.phrase}`, { akcja: { etykieta: COFNIJ, wykonaj: () => przywrocRegule(kopia) } });
+}
+
+async function przywrocRegule(kopia) {
+    const wiersz = await przywrocWiersz('rules', kopia, 'Nie przywrócono reguły');
+    if (!wiersz) return;
+    // Ta sama data dodania = to samo miejsce w kolejności (najnowsza reguła wygrywa)
+    dynamiczneReguly = [...dynamiczneReguly, wiersz].sort((a, b) =>
+        String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    odswiezInterfejs();
+    pokazKomunikat(`Przywrócono regułę ${wiersz.phrase}`);
 }
 
 async function dodajRegule(e) {

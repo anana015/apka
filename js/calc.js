@@ -276,6 +276,32 @@ function analizaCelu(cel, operacje = [], M = ostatniMiesiacDanych(), odsetki = o
     };
 }
 
+// =====================================================================
+// PROGNOZA LIMITU KATEGORII (Pulpit, bieżący miesiąc)
+// Tempo liniowe: wydane do dziś ÷ dzień miesiąca × liczba dni miesiąca.
+// Za wcześnie w miesiącu (pierwsze dni) jedna większa płatność zawyżałaby wynik – wtedy null.
+// Ostatni dzień: prognoza = to, co już wydane – też null (wystarczy zwykły pasek limitu).
+// =====================================================================
+
+const MIN_DNI_PROGNOZY = 5;
+
+function dniWMiesiacu(rok, miesiac) {
+    return new Date(Date.UTC(rok, miesiac, 0)).getUTCDate(); // miesiac 1–12
+}
+
+function prognozaKoncaMiesiaca(wydane, dzien, dniMiesiaca) {
+    if (!(wydane > 0) || dzien < MIN_DNI_PROGNOZY || dzien >= dniMiesiaca) return null;
+    return Math.round((wydane / dzien) * dniMiesiaca);
+}
+
+// { prognoza, ponad } gdy w tym tempie limit zostanie przekroczony do końca miesiąca, inaczej null.
+// Gdy limit jest już przekroczony, prognozy nie pokazujemy – mówi o tym pasek limitu.
+function ostrzezenieLimitu(wydane, limit, dzien, dniMiesiaca) {
+    if (!(limit > 0) || wydane >= limit) return null;
+    const prognoza = prognozaKoncaMiesiaca(wydane, dzien, dniMiesiaca);
+    return prognoza != null && prognoza > limit ? { prognoza, ponad: prognoza - limit } : null;
+}
+
 // Grosze zaokrąglone w górę do pełnych 10 zł (zalecenie w 8.3)
 function wGoreDo10zl(grosze) {
     return Math.ceil(Math.max(0, grosze) / 1000) * 1000;

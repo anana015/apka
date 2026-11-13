@@ -16,7 +16,8 @@ const PLIKI_LOGIKI = [
     'js/rules.js',
     'js/calc.js',
     'js/banki.js',
-    'js/views/import.js'
+    'js/views/import.js',
+    'js/views/transakcje.js'
 ];
 
 function zaladuj(pliki = PLIKI_LOGIKI) {

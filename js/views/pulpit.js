@@ -147,6 +147,10 @@ function rysujKategoriePulpitu(kategorie, trybMiesiac) {
         return;
     }
     const najwieksza = Math.max(...posortowane.map(([, kwota]) => kwota));
+    // Prognoza „w tym tempie przekroczysz limit” – tylko dla bieżącego miesiąca
+    const dzis = new Date();
+    const biezacy = trybMiesiac && stan.miesiacWybrany === kluczMiesiaca(dzis.getFullYear(), dzis.getMonth() + 1);
+    const dniMiesiaca = dniWMiesiacu(dzis.getFullYear(), dzis.getMonth() + 1);
 
     lista.innerHTML = posortowane.map(([kat, kwota]) => {
         const kolor = kolorKategorii(kat);
@@ -154,18 +158,26 @@ function rysujKategoriePulpitu(kategorie, trybMiesiac) {
         const kategoria = kategoriaPoNazwie(kat);
         const limit = trybMiesiac && kategoria && kategoria.monthly_limit_gr > 0 ? kategoria.monthly_limit_gr : null;
         let linijkaLimitu = '';
+        let opisLimitu = ''; // dla czytnika ekranu: aria-label przycisku zastępuje jego treść
         if (limit) {
             const wykorzystanie = Math.max(0, kwota) / limit;
             const ostrzezenie = wykorzystanie >= PROG_OSTRZEZENIA_LIMITU;
             // <span class="block">, bo wiersz jest przyciskiem (w <button> nie może być <p>)
             linijkaLimitu = `<span class="block text-[10px] ${ostrzezenie ? 'text-[var(--c-spend)] font-bold' : 'text-[var(--muted)]'}">Limit ${zl(limit)} · wykorzystano ${Math.round(wykorzystanie * 100)}%</span>`;
+            opisLimitu = ` Limit ${zl(limit)}, wykorzystano ${Math.round(wykorzystanie * 100)}%.`;
+            // Wydatki stałe (np. czynsz) płaci się raz w miesiącu – tempo dzienne nic o nich nie mówi
+            const tempo = biezacy && !czyKategoriaStala(kat) ? ostrzezenieLimitu(kwota, limit, dzis.getDate(), dniMiesiaca) : null;
+            if (tempo) {
+                opisLimitu += ` W tym tempie ok. ${zl(tempo.prognoza)} do końca miesiąca, o ${zl(tempo.ponad)} ponad limit.`;
+                linijkaLimitu += `<span class="block text-[10px] font-semibold text-amber-700 dark:text-amber-300">W tym tempie ok. ${zl(tempo.prognoza)} do końca miesiąca – o ${zl(tempo.ponad)} ponad limit</span>`;
+            }
         }
         // Klik w wiersz: lista transakcji tej kategorii w wybranym okresie (zakładka Transakcje)
         const nazwa = kat === 'Nieprzypisane' ? 'Bez kategorii' : kat;
         return `
             <button type="button" data-kat="${esc(kat)}" data-klik="pokazTransakcjeKategorii(this.dataset.kat)"
                 class="block w-full text-left space-y-1 border-b border-[var(--border)] pb-2 -mx-1 px-1 pt-1 rounded-lg hover:bg-[var(--bg)] transition"
-                aria-label="${esc(`${nazwa}: ${zl(kwota, 2)}. Pokaż transakcje`)}">
+                aria-label="${esc(`${nazwa}: ${zl(kwota, 2)}.${opisLimitu} Pokaż transakcje`)}">
                 <span class="flex justify-between items-center gap-2">
                     <span class="flex items-center gap-2 min-w-0"><span class="dot" style="background:${esc(kolor)}"></span><span class="truncate">${esc(nazwa)}</span></span>
                     <span class="flex items-center gap-1.5 whitespace-nowrap">

@@ -146,7 +146,21 @@ Ograniczenia (świadomie zostawione):
   każdy widok ma adres `#pulpit`, `#cele/<id>`, `#ustawienia/reguly` itd. (`js/nawigacja.js`).
 - Po powrocie do karty po ponad 5 minutach dane odświeżają się same (druga osoba mogła coś zmienić).
 
-## 7. Praca nad kodem
+## 7. Ułatwienia w codziennej pracy
+
+- **Cofnij** – po usunięciu transakcji, celu, kategorii albo reguły i po zmianie kategorii
+  komunikat ma przycisk *Cofnij* (co najmniej 8 s). Cofnięcie zmiany kategorii cofa też regułę
+  utworzoną przez „Zapamiętaj dla podobnych”. Plik paragonu usuwanej transakcji jest kasowany
+  dopiero, gdy minie czas na cofnięcie (jeśli w tym czasie zamkniesz kartę, plik zostaje w magazynie).
+- **Komunikaty** są widoczne tym dłużej, im dłuższy tekst (2,6–10 s); najechanie kursorem albo
+  fokus wstrzymuje znikanie, *Escape* zamyka.
+- **Wyszukiwarka w Transakcjach** – kontrahent, tytuł, notatka, data, kategoria, cel albo kwota
+  („123,45”, „123.45”); szuka we wszystkich miesiącach, łączy się z filtrami „Do przypisania” itd.
+- **Prognoza limitu** (Pulpit, bieżący miesiąc, od 5. dnia): „W tym tempie ok. X zł do końca
+  miesiąca – o Y zł ponad limit”. Liczona liniowo z dotychczasowych wydatków; pomija kategorie
+  oznaczone jako wydatek stały (np. czynsz), bo płaci się je raz w miesiącu.
+
+## 8. Praca nad kodem
 
 Potrzebny jest Node.js 18+ (tylko do budowania CSS i testów – aplikacja go nie wymaga).
 
@@ -168,7 +182,7 @@ npm test             # testy: obliczenia, klasyfikacja, import CSV, zdarzenia, a
 - **Po zapisie do bazy** popraw stan w pamięci i wywołaj `odswiezPoZmianie()` zamiast
   `pobierzDane()` – pełne pobranie zostaje dla „Odśwież”, zmiany budżetu i wczytania kopii.
 
-## 8. Struktura
+## 9. Struktura
 
 ```
 index.html            szkielet strony (CSP, manifest)

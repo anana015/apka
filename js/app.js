@@ -191,15 +191,88 @@ function klawiszPrzelacznikaBudzetu(e) {
 // KOMUNIKATY I ZAKŁADKI
 // =====================================================================
 
-// Komunikat nad paskiem zakładek, znika po 2,6 s (10.2)
-let toastTimer = null;
-function pokazKomunikat(tresc) {
+// Komunikat nad paskiem zakładek (10.2). Specyfikacja mówi o 2,6 s, ale dłuższego zdania
+// nie da się w tym czasie przeczytać (WCAG 2.2.1), więc czas zależy od długości tekstu
+// (czasKomunikatu w utils.js). Najechanie myszą albo fokus na komunikacie wstrzymuje odliczanie.
+// opcje:
+//   akcja         – { etykieta, wykonaj } – przycisk w komunikacie, np. „Cofnij”
+//   poWygasnieciu – wywoływane, gdy komunikat zniknie bez użycia akcji (także gdy zastąpi go
+//                   następny), np. ostateczne usunięcie pliku paragonu po czasie na „Cofnij”
+const MIN_POZOSTALO_PO_PAUZIE_MS = 1500;
+let komunikat = { timer: null, pozostalo: 0, start: 0, akcja: null, poWygasnieciu: null };
+
+function pokazKomunikat(tresc, opcje = {}) {
+    zakonczKomunikat(); // poprzedni komunikat: jego „po wygaśnięciu” wykonuje się teraz
     const toast = document.getElementById('toast-powiadomienie');
-    toast.innerText = tresc;
+    const przycisk = document.getElementById('toast-akcja');
+    document.getElementById('toast-tekst').innerText = tresc;
+    przycisk.classList.toggle('hidden', !opcje.akcja);
+    przycisk.innerText = opcje.akcja ? opcje.akcja.etykieta : '';
+    komunikat.akcja = opcje.akcja || null;
+    komunikat.poWygasnieciu = opcje.poWygasnieciu || null;
     toast.classList.remove('hidden');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.add('hidden'), 2600);
+    uruchomOdliczanie(czasKomunikatu(tresc, !!opcje.akcja));
 }
+
+function uruchomOdliczanie(ms) {
+    clearTimeout(komunikat.timer);
+    komunikat.pozostalo = ms;
+    komunikat.start = Date.now();
+    komunikat.timer = setTimeout(koniecOdliczania, ms);
+}
+
+// Komunikat pod kursorem albo z fokusem nie znika (także gdy pojawił się pod stojącym kursorem
+// i nie było zdarzenia mouseenter) – odliczanie wznowi się po zjechaniu kursorem / wyjściu fokusu
+function koniecOdliczania() {
+    const toast = document.getElementById('toast-powiadomienie');
+    if (toast.matches(':hover, :focus-within')) {
+        komunikat.timer = null;
+        komunikat.pozostalo = MIN_POZOSTALO_PO_PAUZIE_MS;
+        return;
+    }
+    zakonczKomunikat();
+}
+
+// Chowa komunikat; akcja niewykorzystana -> poWygasnieciu
+function zakonczKomunikat() {
+    clearTimeout(komunikat.timer);
+    const poWygasnieciu = komunikat.poWygasnieciu;
+    komunikat = { timer: null, pozostalo: 0, start: 0, akcja: null, poWygasnieciu: null };
+    document.getElementById('toast-powiadomienie').classList.add('hidden');
+    if (poWygasnieciu) {
+        try { poWygasnieciu(); } catch (err) { console.error(err); }
+    }
+}
+
+// Przycisk w komunikacie (data-klik w index.html)
+function wykonajAkcjeKomunikatu() {
+    const akcja = komunikat.akcja;
+    komunikat.poWygasnieciu = null; // akcja użyta – nic nie finalizujemy
+    zakonczKomunikat();
+    if (akcja) Promise.resolve(akcja.wykonaj()).catch(err => console.error(err));
+}
+
+function wstrzymajKomunikat() {
+    if (!komunikat.timer) return;
+    clearTimeout(komunikat.timer);
+    komunikat.timer = null;
+    komunikat.pozostalo -= Date.now() - komunikat.start;
+}
+
+function wznowKomunikat() {
+    const toast = document.getElementById('toast-powiadomienie');
+    if (komunikat.timer || toast.classList.contains('hidden') || toast.matches(':hover, :focus-within')) return;
+    uruchomOdliczanie(Math.max(komunikat.pozostalo, MIN_POZOSTALO_PO_PAUZIE_MS));
+}
+
+(function nasluchKomunikatu() {
+    const toast = document.getElementById('toast-powiadomienie');
+    if (!toast) return;
+    toast.addEventListener('mouseenter', wstrzymajKomunikat);
+    toast.addEventListener('focusin', wstrzymajKomunikat);
+    toast.addEventListener('mouseleave', wznowKomunikat);
+    toast.addEventListener('focusout', () => setTimeout(wznowKomunikat, 0));
+})();
 
 const TYTULY_ZAKLADEK = {
     pulpit: 'Pulpit', transakcje: 'Transakcje', import: 'Import CSV',
@@ -229,6 +302,8 @@ function zmienZakladke(nazwa, opcje = {}) {
     stan.filtrTransakcji = opcje.filtr || 'wszystkie';
     stan.filtrKategorii = opcje.kategoria || null;
     stan.zakresTransakcji = opcje.zakres || null;
+    stan.szukajTransakcji = '';
+    document.getElementById('transakcje-szukaj').value = '';
     if (nazwa === 'transakcje') {
         // „Do przypisania” z pulpitu obejmuje wszystkie miesiące (7.1);
         // zwykłe wejście pokazuje ten sam miesiąc, który jest wybrany na Pulpicie.
