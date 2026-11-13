@@ -105,8 +105,8 @@ function rysujFiltrKategorii(kategoria, zakres) {
     pasek.classList.remove('hidden');
     pasek.innerHTML = `
         <div class="flex items-center justify-between gap-2 flex-wrap">
-            <button type="button" onclick="zmienZakladke('pulpit')" class="text-sm font-semibold text-[var(--accent)]">‹ Pulpit</button>
-            <button type="button" onclick="wyczyscFiltrKategorii()" class="text-[11px] text-[var(--muted)] underline">Pokaż wszystkie transakcje</button>
+            <button type="button" data-klik="zmienZakladke('pulpit')" class="text-sm font-semibold text-[var(--accent)]">‹ Pulpit</button>
+            <button type="button" data-klik="wyczyscFiltrKategorii()" class="text-[11px] text-[var(--muted)] underline">Pokaż wszystkie transakcje</button>
         </div>
         <div class="flex items-center gap-2 flex-wrap text-xs">
             ${kategoria ? `<span class="chip is-active !inline-flex items-center gap-1.5"><span class="dot" style="background:${esc(kolorKategorii(kategoria))}"></span>${esc(nazwa)}</span>` : ''}
@@ -133,7 +133,7 @@ function klasaKwoty(k) {
 
 function prawaKolumna(t, k) {
     if (k.podzial) {
-        return `<button type="button" onclick="otworzPodzial('${esc(t.id)}')" class="status-label text-[var(--accent)] hover:underline" title="Zmień lub usuń podział">✂ Podzielona (${k.podzial.length})</button>`;
+        return `<button type="button" data-klik="otworzPodzial('${esc(t.id)}')" class="status-label text-[var(--accent)] hover:underline" title="Zmień lub usuń podział">✂ Podzielona (${k.podzial.length})</button>`;
     }
     if (k.typ === 'wplata' && !k.celReczny) {
         // Wpłata rozpoznana po numerze subkonta celu -> etykieta statusu
@@ -143,7 +143,7 @@ function prawaKolumna(t, k) {
         // Wypłata ze skarbonek -> wybór celu (żółta ramka, gdy nieprzypisana)
         const celId = k.cel ? String(k.cel.id) : null;
         return `
-            <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Skarbonka, z której jest wypłata" class="${KLASA_SELECT} ${k.cel ? 'border-[var(--border)]' : 'border-amber-400 ring-1 ring-amber-400'}">
+            <select data-zmiana="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Skarbonka, z której jest wypłata" class="${KLASA_SELECT} ${k.cel ? 'border-[var(--border)]' : 'border-amber-400 ring-1 ring-amber-400'}">
                 <option value="">${k.cel ? 'Automatycznie' : 'Z której skarbonki?'}</option>
                 ${stan.cele.map(c => `<option value="${esc(PREFIKS_CELU + c.id)}" ${celId === String(c.id) ? 'selected' : ''}>Wypłata: ${esc(c.name)}</option>`).join('')}
             </select>`;
@@ -158,7 +158,7 @@ function prawaKolumna(t, k) {
         .join('');
     // „Pomiń” zaraz pod „Wybierz…”, żeby nie ginęła pod długą listą kategorii i skarbonek
     return `
-        <select onchange="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Kategoria transakcji" class="${KLASA_SELECT} ${bezKat ? 'border-amber-400 ring-1 ring-amber-400' : 'border-[var(--border)]'}">
+        <select data-zmiana="zmienKategorieTransakcji('${esc(t.id)}', this.value)" aria-label="Kategoria transakcji" class="${KLASA_SELECT} ${bezKat ? 'border-amber-400 ring-1 ring-amber-400' : 'border-[var(--border)]'}">
             <option value="">Wybierz kategorię...</option>
             <option value="${POMIN}" ${k.typ === 'pominiete' ? 'selected' : ''}>${POMIN} (nie licz w sumach)</option>
             <optgroup label="Kategorie">${opcjeKategorii}</optgroup>
@@ -189,11 +189,11 @@ function wierszTransakcji({ t, k }) {
             <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
                 <div class="flex items-center gap-1">
                     <span class="font-bold kwota ${klasaKwoty(k)}">${(t.amount_gr / 100).toFixed(2)} zł</span>
-                    <button type="button" onclick="otworzSzczegolyTransakcji('${id}')" class="${t.note || t.receipt_path ? 'text-[var(--accent)]' : 'text-[var(--muted)]'} hover:text-[var(--accent)] transition p-1"
+                    <button type="button" data-klik="otworzSzczegolyTransakcji('${id}')" class="${t.note || t.receipt_path ? 'text-[var(--accent)]' : 'text-[var(--muted)]'} hover:text-[var(--accent)] transition p-1"
                         title="Notatka i paragon" aria-label="Notatka i paragon" aria-expanded="${stan.szczegolyTransakcji === String(t.id)}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.4 11.6-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5"/></svg>
                     </button>
-                    <button type="button" id="btn-usun-${id}" onclick="pytajOUsuniecieTransakcji('${id}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1"
+                    <button type="button" id="btn-usun-${id}" data-klik="pytajOUsuniecieTransakcji('${id}')" class="text-[var(--muted)] hover:text-[var(--c-spend)] transition p-1"
                         title="Usuń transakcję" aria-label="Usuń transakcję" aria-expanded="${czyPotwierdzenie('transakcja', t.id)}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
                     </button>
@@ -262,7 +262,7 @@ function odswiezTransakcje() {
     const chipMiesiaca = (wartosc, etykieta, ile) => {
         const wybrany = (wartosc || null) === (miesiac || null);
         const pokazLicznik = filtr !== 'wszystkie' || kategoria;
-        return `<button type="button" onclick="wybierzMiesiacTransakcji(${wartosc ? `'${esc(wartosc)}'` : 'null'})" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(etykieta)}${pokazLicznik ? ` <span class="opacity-70">(${ile || 0})</span>` : ''}</button>`;
+        return `<button type="button" data-klik="wybierzMiesiacTransakcji(${wartosc ? `'${esc(wartosc)}'` : 'null'})" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(etykieta)}${pokazLicznik ? ` <span class="opacity-70">(${ile || 0})</span>` : ''}</button>`;
     };
     const sumaFiltra = Object.values(naMiesiac).reduce((a, b) => a + b, 0);
     kontenerMiesiecy.innerHTML =
@@ -364,7 +364,7 @@ async function usunTransakcje(id) {
         return true;
     });
     if (!udane) return;
-    odswiezInterfejs();
+    odswiezPoZmianie();
     pokazKomunikat('Usunięto transakcję');
 }
 
@@ -385,7 +385,7 @@ async function zmienKategorieTransakcji(id, nowaKat) {
         .eq('id', id);
 
     if (error) {
-        pokazKomunikat('Błąd zapisu kategorii: ' + error.message);
+        pokazKomunikat(komunikatBledu(error, 'Błąd zapisu kategorii'));
         odswiezTransakcje(); // przywraca poprzednią wartość listy
         return;
     }
@@ -540,9 +540,9 @@ function edytorPodzialu(t) {
                 <select data-podzial-kat="${i}" aria-label="Kategoria części ${i + 1}" class="${KLASA_SELECT} border-[var(--border)] flex-1 !max-w-none">${opcje(c.category)}</select>
                 ${ostatnia
                     ? `<span id="podzial-reszta" class="kwota w-24 text-right font-semibold" aria-live="polite" title="Reszta kwoty transakcji"></span>`
-                    : `<input type="text" inputmode="decimal" data-podzial-kwota="${i}" value="${esc(c.kwota)}" oninput="przeliczReszte()" placeholder="0,00" aria-label="Kwota części ${i + 1} w zł" class="input !w-24 !py-1 text-right kwota">`}
+                    : `<input type="text" inputmode="decimal" data-podzial-kwota="${i}" value="${esc(c.kwota)}" data-wpis="przeliczReszte()" placeholder="0,00" aria-label="Kwota części ${i + 1} w zł" class="input !w-24 !py-1 text-right kwota">`}
                 ${n > 2
-                    ? `<button type="button" onclick="usunCzescPodzialu(${i})" class="p-1 text-[var(--muted)] hover:text-[var(--c-spend)]" aria-label="Usuń część ${i + 1}">✕</button>`
+                    ? `<button type="button" data-klik="usunCzescPodzialu(${i})" class="p-1 text-[var(--muted)] hover:text-[var(--c-spend)]" aria-label="Usuń część ${i + 1}">✕</button>`
                     : '<span class="w-6 shrink-0" aria-hidden="true"></span>'}
             </div>`;
     }).join('');
@@ -553,10 +553,10 @@ function edytorPodzialu(t) {
                 <span class="text-[var(--muted)]"> · ostatnia część to reszta kwoty</span></p>
             ${wiersze}
             <div class="flex flex-wrap gap-2 pt-1">
-                ${n < MAKS_CZESCI ? `<button type="button" onclick="dodajCzescPodzialu()" class="chip">+ Dodaj część</button>` : ''}
-                <button type="button" onclick="zapiszPodzial()" class="chip is-active">Zapisz podział</button>
-                <button type="button" onclick="anulujPodzial()" class="chip">Anuluj</button>
-                ${t.splits ? `<button type="button" onclick="usunPodzial('${esc(t.id)}')" class="chip !text-[var(--c-spend)] ml-auto">Usuń podział</button>` : ''}
+                ${n < MAKS_CZESCI ? `<button type="button" data-klik="dodajCzescPodzialu()" class="chip">+ Dodaj część</button>` : ''}
+                <button type="button" data-klik="zapiszPodzial()" class="chip is-active">Zapisz podział</button>
+                <button type="button" data-klik="anulujPodzial()" class="chip">Anuluj</button>
+                ${t.splits ? `<button type="button" data-klik="usunPodzial('${esc(t.id)}')" class="chip !text-[var(--c-spend)] ml-auto">Usuń podział</button>` : ''}
             </div>
         </div>`;
 }
@@ -593,7 +593,7 @@ async function zapiszPodzial() {
         .update({ splits, category_manual: null })
         .eq('id', t.id);
     if (error) {
-        pokazKomunikat('Nie udało się zapisać podziału: ' + error.message);
+        pokazKomunikat(komunikatBledu(error, 'Nie udało się zapisać podziału'));
         return;
     }
     t.splits = splits;
@@ -608,7 +608,7 @@ async function usunPodzial(id) {
     if (!t) return;
     const { error } = await supabaseClient.from('transakcje').update({ splits: null }).eq('id', id);
     if (error) {
-        pokazKomunikat('Nie udało się usunąć podziału: ' + error.message);
+        pokazKomunikat(komunikatBledu(error, 'Nie udało się usunąć podziału'));
         return;
     }
     t.splits = null;

@@ -71,6 +71,11 @@ function pokazEtapLogowania(etap, { info = '', blad = '', fokus = false } = {}) 
     if (fokus) ustawFokusNa(cel.fokus);
 }
 
+// Przyciski „Nie pamiętasz hasła?” / „‹ Wróć do logowania” (data-klik w index.html)
+function przejdzDoEtapuLogowania(etap) {
+    pokazEtapLogowania(etap, { fokus: true });
+}
+
 function ustawBladLogowania(tekst) {
     const el = document.getElementById('login-error');
     el.innerText = tekst || '';
@@ -218,6 +223,7 @@ async function zmienHaslo(e) {
             || (nowe === obecne ? 'Nowe hasło musi różnić się od obecnego.' : '');
     if (blad) return pokazBladZmianyHasla(blad);
     if (!stan.uzytkownikEmail) return pokazBladZmianyHasla('To konto nie ma adresu e-mail – hasło można zmienić tylko w panelu Supabase.');
+    if (stan.trybOffline) return pokazBladZmianyHasla('Bez internetu nie można zmienić hasła.');
 
     const btn = document.getElementById('btn-zmien-haslo');
     btn.disabled = true;
@@ -286,7 +292,7 @@ function htmlCzlonka(c, jedyny) {
         klasa: 'mt-2'
     }) : '';
     const przycisk = jedyny ? '' : `
-        <button type="button" id="btn-czl-usun-${idE}" onclick="pytajOUsuniecieCzlonka('${idE}')"
+        <button type="button" id="btn-czl-usun-${idE}" data-klik="pytajOUsuniecieCzlonka('${idE}')"
             class="chip" aria-label="${esc(c.to_ja ? 'Opuść budżet wspólny' : `Usuń ${c.email || 'osobę'} z budżetu wspólnego`)}">${c.to_ja ? 'Opuść' : 'Usuń'}</button>`;
     return `
         <li class="py-2">
@@ -310,7 +316,7 @@ function htmlCzlonkow() {
     if (!d.czlonek && !d.maCzlonkow && !d.maDane) {
         return `
             <p class="text-xs">Budżet wspólny jeszcze nie istnieje. Utwórz go – będziesz pierwszą osobą z dostępem, a potem dodasz drugą osobę po jej adresie e-mail.</p>
-            <button type="button" id="btn-utworz-wspolny" onclick="utworzBudzetWspolny()" class="btn-primary !w-auto px-6">Utwórz budżet wspólny</button>`;
+            <button type="button" id="btn-utworz-wspolny" data-klik="utworzBudzetWspolny()" class="btn-primary !w-auto px-6">Utwórz budżet wspólny</button>`;
     }
     if (!d.czlonek && !d.maCzlonkow) {
         return akapitKonta('W bazie są dane budżetu wspólnego, ale nikt nie ma do nich dostępu. Ze względów bezpieczeństwa pierwsze osoby dodaje się w Supabase (SQL Editor) – instrukcja w README.md, „Pierwsze osoby budżetu wspólnego”.');
@@ -323,7 +329,7 @@ function htmlCzlonkow() {
         <ul class="divide-y divide-[var(--border)]" aria-label="Osoby z dostępem do budżetu wspólnego">
             ${d.czlonkowie.map(c => htmlCzlonka(c, jedyny)).join('')}
         </ul>
-        <form onsubmit="dodajCzlonka(event)" class="flex gap-2 pt-1">
+        <form data-wyslij="dodajCzlonka(event)" class="flex gap-2 pt-1">
             <label for="czl-email" class="sr-only">Adres e-mail osoby do dodania</label>
             <input type="email" id="czl-email" required autocomplete="off" placeholder="adres e-mail drugiej osoby" class="input flex-1 min-w-0">
             <button type="submit" id="btn-czl-dodaj" class="btn-secondary whitespace-nowrap">+ Dodaj</button>
@@ -339,6 +345,7 @@ function rysujCzlonkow() {
 function opisBleduDostepu(error, poczatek) {
     if (czyBrakSchematu(error)) return komunikatBledu(error, poczatek);
     const kod = String((error && error.code) || '');
+    if (kod === BLAD_OFFLINE.code) return komunikatBledu(error, poczatek);
     if (['P0001', 'P0002', '42501', '22023', '28000'].includes(kod) && error.message) return error.message;
     return `${poczatek}: ${(error && error.message) || 'nieznany błąd'}`;
 }

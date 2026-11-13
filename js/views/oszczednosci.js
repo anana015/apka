@@ -50,7 +50,7 @@ function rysujOszczednosciPulpitu(transOkres) {
         const kolor = kolorKategorii(w.nazwa);
         const dlugosc = Math.max(0, (w.lacznie / najwieksza) * 100);
         return `
-            <button type="button" data-kat="${esc(w.nazwa)}" onclick="pokazTransakcjeKategorii(this.dataset.kat)"
+            <button type="button" data-kat="${esc(w.nazwa)}" data-klik="pokazTransakcjeKategorii(this.dataset.kat)"
                 class="block w-full text-left space-y-1 border-b border-[var(--border)] pb-2 -mx-1 px-1 pt-1 rounded-lg hover:bg-[var(--bg)] transition"
                 aria-label="${esc(`${w.nazwa}: łącznie ${zl(w.lacznie, 2)}, w tym okresie ${zl(w.okres, 2)}. Pokaż transakcje`)}">
                 <span class="flex justify-between items-center gap-2">

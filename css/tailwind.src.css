@@ -1,0 +1,4 @@
+/* Źródło dla Tailwind CSS – wynik: css/tailwind.css (npm run build:css). Własne style: css/app.css. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

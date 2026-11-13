@@ -6,7 +6,7 @@
 // Banki: Pekao, PKO BP, Alior Bank (profile w banki.js); inne pliki – ogólne
 // mapowanie kolumn albo ręczny wybór, zapamiętywany jako profil banku.
 // Część „czysta” (dekodowanie, wykrywanie kolumn, daty, kwoty, przygotowanie wierszy)
-// nie dotyka interfejsu ani bazy.
+// nie dotyka interfejsu ani bazy – testy w tests/import.test.js.
 // =====================================================================
 
 const KLUCZ_PROFILI_BANKU = 'budzet.profileBanku';
@@ -162,11 +162,11 @@ function parsujDate(tekst) {
     return `${r}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-// 5.2 Kwota: bez spacji (też twardych), bez „PLN”, przecinek -> kropka, × 100.
+// 5.2 Kwota: bez spacji (też twardych i wąskich), bez „PLN”, przecinek -> kropka, × 100.
 // „-1 234,56” -> -123456, „+1500.00” -> 150000. Błędna -> null.
 function parsujKwote(tekst) {
     let s = String(tekst || '')
-        .replace(/[\s  ]/g, '')
+        .replace(/[\s  ]/g, '')
         .replace(/PLN/i, '')
         .replace(/−/g, '-'); // typograficzny minus
     if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, ''); // „1.234,56”
@@ -439,7 +439,7 @@ async function zapiszZaimportowaneTransakcje() {
 
     // Wpis w historii importów. Bez tabeli imports import działa dalej, tylko bez historii.
     // Kolumna bank powstaje w migracji budżetu osobistego – wysyłamy ją tylko po tej migracji.
-    let importId = null;
+    let wpisImportu = null;
     const resImport = await supabaseClient.from('imports').insert([{
         file_name: imp.nazwaPliku,
         rows_total: imp.przygotowane.length,
@@ -448,8 +448,9 @@ async function zapiszZaimportowaneTransakcje() {
         rows_error: imp.przygotowane.filter(w => w.status === 'blad').length,
         newest_month: miesiac,
         ...(stan.schematBudzetow && imp.bank ? { bank: imp.bank } : {})
-    }]).select('id').single();
-    if (!resImport.error && resImport.data) importId = resImport.data.id;
+    }]).select().single();
+    if (!resImport.error && resImport.data) wpisImportu = resImport.data;
+    const importId = wpisImportu ? wpisImportu.id : null;
 
     const rekordy = nowe.map(w => ({
         booked_on: w.booked_on,
@@ -461,8 +462,9 @@ async function zapiszZaimportowaneTransakcje() {
         ...(importId ? { import_id: importId } : {})
     }));
 
-    // Jedno zapytanie = jedna transakcja w bazie: zapisują się wszystkie wiersze albo żaden (5.3)
-    const { error } = await supabaseClient.from('transakcje').insert(rekordy);
+    // Jedno zapytanie = jedna transakcja w bazie: zapisują się wszystkie wiersze albo żaden (5.3).
+    // .select() zwraca zapisane wiersze (z id) – dopisujemy je do stanu bez pobierania wszystkiego.
+    const { data: zapisane, error } = await supabaseClient.from('transakcje').insert(rekordy).select();
     if (error) {
         if (importId) await supabaseClient.from('imports').delete().eq('id', importId);
         imp.etap = 'podglad';
@@ -473,7 +475,15 @@ async function zapiszZaimportowaneTransakcje() {
 
     imp.wynik = { dodane: nowe.length, doCelow, miesiac };
     imp.etap = 'wynik';
-    await pobierzDane(); // odświeża też historię importów i ekran
+    if (Array.isArray(zapisane) && zapisane.length === rekordy.length) {
+        stan.transakcje = stan.transakcje.concat(zapisane);
+        if (wpisImportu && Array.isArray(stan.importy)) {
+            stan.importy = [wpisImportu, ...stan.importy].slice(0, LIMIT_HISTORII_IMPORTOW);
+        }
+        odswiezPoZmianie();
+    } else {
+        await pobierzDane(); // baza nie oddała zapisanych wierszy – pobieramy wszystko od nowa
+    }
     pokazKomunikat(`Zapisano ${nowe.length} ${odmiana(nowe.length, 'transakcję', 'transakcje', 'transakcji')}, ${doCelow} trafiło do celów`);
 }
 
@@ -514,7 +524,11 @@ function odswiezImport() {
 
     // Do którego budżetu trafi import – widoczne od pierwszego ekranu
     const cel = document.getElementById('import-budzet');
-    if (cel) cel.innerText = `Transakcje trafią do: ${nazwaBudzetu().toLowerCase()}`;
+    if (cel) {
+        cel.innerText = stan.trybOffline
+            ? 'Bez internetu import jest niedostępny – plik możesz wczytać po powrocie połączenia.'
+            : `Transakcje trafią do: ${nazwaBudzetu().toLowerCase()}`;
+    }
     if (etap === 'start') rysujInstrukcjeEksportu();
 
     if (etap === 'mapowanie') rysujMapowanie();
@@ -566,8 +580,8 @@ function rysujMapowanie() {
         </div>
         <p id="mapa-blad" role="alert" class="text-xs text-[var(--c-spend)]"></p>
         <div class="flex items-center gap-4">
-            <button type="button" onclick="zatwierdzMapowanie()" class="btn-primary !w-auto px-6">Dalej</button>
-            <button type="button" onclick="resetujImport()" class="text-xs text-[var(--muted)] underline">Anuluj</button>
+            <button type="button" data-klik="zatwierdzMapowanie()" class="btn-primary !w-auto px-6">Dalej</button>
+            <button type="button" data-klik="resetujImport()" class="text-xs text-[var(--muted)] underline">Anuluj</button>
         </div>`;
 }
 
@@ -631,7 +645,7 @@ function rysujPodglad() {
             <div class="min-w-0">
                 <h2 class="font-semibold text-sm truncate">Podgląd: <span class="text-[var(--accent)]">${esc(imp.nazwaPliku)}</span></h2>
                 <p class="text-[11px] text-[var(--muted)]">${esc(opisProfilu())} · ${esc(nazwaBudzetu())} · ${esc(imp.odczyt)} ·
-                    <button type="button" onclick="otworzMapowanie()" class="underline">zmień kolumny</button></p>
+                    <button type="button" data-klik="otworzMapowanie()" class="underline">zmień kolumny</button></p>
             </div>
         </div>
         <div class="grid grid-cols-3 gap-2 text-center text-xs min-[900px]:max-w-xl">
@@ -644,11 +658,11 @@ function rysujPodglad() {
         <div class="card-grid scroll-box text-xs pr-1">${lista}</div>
         ${imp.bladZapisu ? `<p role="alert" class="text-xs text-[var(--c-spend)] card !p-3 border border-current">${esc(imp.bladZapisu)}</p>` : ''}
         <div class="flex items-center gap-4 flex-wrap">
-            <button type="button" id="btn-zapisz-import" onclick="zapiszZaimportowaneTransakcje()" class="btn-primary min-[900px]:max-w-sm"
+            <button type="button" id="btn-zapisz-import" data-klik="zapiszZaimportowaneTransakcje()" class="btn-primary min-[900px]:max-w-sm"
                 ${nowe.length === 0 || zapisywanie ? 'disabled' : ''}>
                 ${zapisywanie ? 'Zapisywanie…' : `Zapisz ${nowe.length} ${odmiana(nowe.length, 'transakcję', 'transakcje', 'transakcji')}`}
             </button>
-            <button type="button" onclick="resetujImport()" class="text-xs text-[var(--muted)] underline" ${zapisywanie ? 'disabled' : ''}>Anuluj</button>
+            <button type="button" data-klik="resetujImport()" class="text-xs text-[var(--muted)] underline" ${zapisywanie ? 'disabled' : ''}>Anuluj</button>
         </div>`;
 }
 
@@ -662,10 +676,10 @@ function rysujWynik() {
             <h2 class="font-bold">Wyciąg za ${esc(nazwa)} zapisany</h2>
             <p class="text-xs text-[var(--muted)]">Dodano ${w.dodane} ${odmiana(w.dodane, 'transakcję', 'transakcje', 'transakcji')} do budżetu: ${esc(nazwaBudzetu().toLowerCase())}, ${w.doCelow} trafiło do celów.</p>
             <div class="flex flex-col min-[480px]:flex-row gap-2 justify-center pt-1">
-                <button type="button" onclick="pokazMiesiacNaPulpicie('${esc(w.miesiac)}')" class="btn-primary min-[480px]:!w-auto px-5">Pokaż ${esc(nazwaKrotka)} na pulpicie</button>
-                <button type="button" onclick="zmienZakladke('cele')" class="btn-secondary">Zobacz cele</button>
+                <button type="button" data-klik="pokazMiesiacNaPulpicie('${esc(w.miesiac)}')" class="btn-primary min-[480px]:!w-auto px-5">Pokaż ${esc(nazwaKrotka)} na pulpicie</button>
+                <button type="button" data-klik="zmienZakladke('cele')" class="btn-secondary">Zobacz cele</button>
             </div>
-            <button type="button" onclick="resetujImport()" class="text-xs text-[var(--muted)] underline">Importuj kolejny plik</button>
+            <button type="button" data-klik="resetujImport()" class="text-xs text-[var(--muted)] underline">Importuj kolejny plik</button>
         </div>`;
 }
 
@@ -706,6 +720,7 @@ function rysujHistorieImportow() {
 // ---- Przeciągnięcie pliku (komputer) ---------------------------------
 
 (function obslugaPrzeciagania() {
+    if (typeof document === 'undefined' || typeof window === 'undefined') return; // testy w Node
     const strefa = () => document.getElementById('import-strefa');
     ['dragover', 'drop'].forEach(typ => window.addEventListener(typ, e => e.preventDefault())); // przeglądarka nie otwiera pliku
     document.addEventListener('dragover', e => {

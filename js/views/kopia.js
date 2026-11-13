@@ -233,10 +233,12 @@ function rysujWczytanieKopii() {
     let html;
     if (stan.schematBudzetow !== true) {
         html = `<p class="text-xs text-[var(--muted)]">Wczytanie kopii wymaga aktualnej bazy – uruchom w Supabase skrypt <span class="font-mono">${esc(PLIK_MIGRACJI)}</span> (i wcześniejsze migracje).</p>`;
+    } else if (stan.trybOffline) {
+        html = '<p class="text-xs text-[var(--muted)]">Bez internetu nie można wczytać kopii – wróć tu po powrocie połączenia.</p>';
     } else if (!w) {
         html = `
             <p class="text-xs text-[var(--muted)]">Zastępuje dane <strong>${esc(BUDZET_DOPELNIACZ[stan.budzet])}</strong> danymi z pliku kopii. Zanim cokolwiek się zmieni, zobaczysz, co jest w pliku, i potwierdzisz.</p>
-            <button type="button" id="btn-wczytaj-wybierz" onclick="document.getElementById('ust-wczytaj-plik').click()" class="btn-secondary">Wybierz plik kopii…</button>`;
+            <button type="button" id="btn-wczytaj-wybierz" data-klik="kliknijElement('ust-wczytaj-plik')" class="btn-secondary">Wybierz plik kopii…</button>`;
     } else if (w.etap === 'blad') {
         html = `
             <div role="alert" class="text-xs p-3 rounded-xl border border-current text-[var(--c-spend)]">
@@ -244,8 +246,8 @@ function rysujWczytanieKopii() {
                 <p class="mt-1">${esc(w.blad)}</p>
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button type="button" onclick="document.getElementById('ust-wczytaj-plik').click()" class="btn-secondary">Wybierz inny plik</button>
-                <button type="button" onclick="anulujWczytanieKopii()" class="btn-secondary">Anuluj</button>
+                <button type="button" data-klik="kliknijElement('ust-wczytaj-plik')" class="btn-secondary">Wybierz inny plik</button>
+                <button type="button" data-klik="anulujWczytanieKopii()" class="btn-secondary">Anuluj</button>
             </div>`;
     } else if (w.etap === 'cofanie') {
         html = `<p role="status" aria-live="polite" class="text-xs font-semibold">${esc(w.status)}</p>`;
@@ -289,11 +291,11 @@ function htmlPodgladuKopii(w) {
         dol = `
             <div role="alert" class="text-xs p-3 rounded-xl border border-current text-[var(--c-spend)] space-y-2">
                 <p>${esc(zgodnosc.tekst)}</p>
-                ${zgodnosc.przelacz ? `<button type="button" onclick="przelaczBudzetDlaKopii()" class="chip is-active">Przełącz na ${esc(nazwaBudzetu(analiza.budzetKopii).toLowerCase())}</button>` : ''}
+                ${zgodnosc.przelacz ? `<button type="button" data-klik="przelaczBudzetDlaKopii()" class="chip is-active">Przełącz na ${esc(nazwaBudzetu(analiza.budzetKopii).toLowerCase())}</button>` : ''}
             </div>
             <div class="flex gap-2 flex-wrap">
-                <button type="button" onclick="document.getElementById('ust-wczytaj-plik').click()" class="btn-secondary">Wybierz inny plik</button>
-                <button type="button" onclick="anulujWczytanieKopii()" class="btn-secondary">Anuluj</button>
+                <button type="button" data-klik="kliknijElement('ust-wczytaj-plik')" class="btn-secondary">Wybierz inny plik</button>
+                <button type="button" data-klik="anulujWczytanieKopii()" class="btn-secondary">Anuluj</button>
             </div>`;
     } else {
         dol = `
@@ -302,14 +304,14 @@ function htmlPodgladuKopii(w) {
                 <p class="text-xs"><strong>Obecne dane ${esc(BUDZET_DOPELNIACZ[stan.budzet])} zostaną usunięte</strong> i zastąpione danymi z kopii. Pliki paragonów zostają w magazynie.</p>
                 <label class="flex items-start gap-2 text-xs ${wTrakcie ? '' : 'cursor-pointer'}">
                     <input type="checkbox" id="wczytaj-zapas" class="mt-0.5 w-4 h-4 shrink-0 accent-[var(--accent)]" ${w.pobierzZapas ? 'checked' : ''} ${wTrakcie ? 'disabled' : ''}
-                        onchange="ustawZapasKopii(this.checked)">
+                        data-zmiana="ustawZapasKopii(this.checked)">
                     <span>Najpierw pobierz plik z obecnymi danymi <span class="text-[var(--muted)]">(zalecane – na wypadek, gdyby trzeba było wrócić później)</span></span>
                 </label>
                 ${wTrakcie
                     ? `<p role="status" aria-live="polite" class="text-xs font-semibold">${esc(w.status)}</p>`
                     : `<div class="flex gap-2 flex-wrap">
-                           <button type="button" id="btn-wczytaj-zastap" onclick="zastapDaneKopia()" class="${KLASA_PRZYCISKU_ZASTAP}">Zastąp dane ${esc(BUDZET_DOPELNIACZ[stan.budzet])}</button>
-                           <button type="button" onclick="anulujWczytanieKopii()" class="btn-secondary">Anuluj</button>
+                           <button type="button" id="btn-wczytaj-zastap" data-klik="zastapDaneKopia()" class="${KLASA_PRZYCISKU_ZASTAP}">Zastąp dane ${esc(BUDZET_DOPELNIACZ[stan.budzet])}</button>
+                           <button type="button" data-klik="anulujWczytanieKopii()" class="btn-secondary">Anuluj</button>
                        </div>`}
             </div>`;
     }
@@ -337,7 +339,7 @@ function htmlWynikuWczytania(w) {
             <div role="status" class="p-3 rounded-xl bg-[var(--bg)] space-y-2 text-xs">
                 <h3 id="wczytaj-naglowek" tabindex="-1" class="font-semibold">Przywrócono dane sprzed wczytania</h3>
                 <p class="text-[var(--muted)]">${esc(opisLiczbTabel(w.zapas.counts || {}))}</p>
-                <button type="button" onclick="anulujWczytanieKopii()" class="btn-secondary">Gotowe</button>
+                <button type="button" data-klik="anulujWczytanieKopii()" class="btn-secondary">Gotowe</button>
             </div>`;
     }
     const moznaCofnac = w.budzet === stan.budzet;
@@ -348,9 +350,9 @@ function htmlWynikuWczytania(w) {
             ${w.bladCofania ? `<p role="alert" class="text-[var(--c-spend)]">${esc(w.bladCofania)}</p>` : ''}
             ${moznaCofnac ? '<p class="text-[11px] text-[var(--muted)]">Coś się nie zgadza? Możesz przywrócić dane sprzed wczytania – do czasu zmiany budżetu albo wylogowania.</p>' : ''}
             <div class="flex gap-2 flex-wrap items-center">
-                ${moznaCofnac ? '<button type="button" id="btn-wczytaj-cofnij" onclick="cofnijWczytanieKopii()" class="btn-secondary">Cofnij wczytanie</button>' : ''}
-                <button type="button" onclick="pobierzZapasKopii()" class="btn-secondary">Pobierz dane sprzed wczytania</button>
-                <button type="button" onclick="anulujWczytanieKopii()" class="text-xs text-[var(--muted)] underline">Gotowe</button>
+                ${moznaCofnac ? '<button type="button" id="btn-wczytaj-cofnij" data-klik="cofnijWczytanieKopii()" class="btn-secondary">Cofnij wczytanie</button>' : ''}
+                <button type="button" data-klik="pobierzZapasKopii()" class="btn-secondary">Pobierz dane sprzed wczytania</button>
+                <button type="button" data-klik="anulujWczytanieKopii()" class="text-xs text-[var(--muted)] underline">Gotowe</button>
             </div>
         </div>`;
 }

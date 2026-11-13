@@ -36,7 +36,7 @@ function zamknijSzczegolyTransakcji() {
 function opisNotatkiWWierszu(t) {
     const czesci = [];
     if (t.note) czesci.push(`<span class="block text-[11px] mt-0.5 leading-tight line-clamp-2"><span aria-hidden="true">📝 </span>${esc(t.note)}</span>`);
-    if (t.receipt_path) czesci.push(`<button type="button" onclick="pokazParagon('${esc(t.id)}')" class="text-[10px] text-[var(--accent)] font-semibold hover:underline mt-0.5"><span aria-hidden="true">📎 </span>paragon</button>`);
+    if (t.receipt_path) czesci.push(`<button type="button" data-klik="pokazParagon('${esc(t.id)}')" class="text-[10px] text-[var(--accent)] font-semibold hover:underline mt-0.5"><span aria-hidden="true">📎 </span>paragon</button>`);
     return czesci.join('');
 }
 
@@ -48,13 +48,13 @@ function panelSzczegolowTransakcji(t) {
             <label for="notatka-${id}" class="field-label !mb-1">Notatka</label>
             <textarea id="notatka-${id}" maxlength="${MAKS_NOTATKA}" rows="2" class="input !text-xs" placeholder="np. prezent dla mamy, zwrot do 14 dni">${esc(t.note || '')}</textarea>
             <div class="flex flex-wrap items-center gap-2">
-                <button type="button" onclick="zapiszNotatke('${id}')" class="chip is-active">Zapisz notatkę</button>
+                <button type="button" data-klik="zapiszNotatke('${id}')" class="chip is-active">Zapisz notatkę</button>
                 ${t.receipt_path
-                    ? `<button type="button" onclick="pokazParagon('${id}')" class="chip">📎 Pokaż paragon</button>
-                       <label class="chip cursor-pointer">Zmień plik<input type="file" accept="image/*,application/pdf" class="sr-only" onchange="wybierzParagon('${id}', this)"></label>
-                       <button type="button" onclick="usunParagon('${id}')" class="chip !text-[var(--c-spend)]">Usuń paragon</button>`
-                    : `<label class="chip cursor-pointer">📎 Dodaj zdjęcie lub PDF paragonu<input type="file" accept="image/*,application/pdf" class="sr-only" onchange="wybierzParagon('${id}', this)"></label>`}
-                <button type="button" onclick="zamknijSzczegolyTransakcji()" class="text-[11px] text-[var(--muted)] underline ml-auto">Zamknij</button>
+                    ? `<button type="button" data-klik="pokazParagon('${id}')" class="chip">📎 Pokaż paragon</button>
+                       <label class="chip cursor-pointer">Zmień plik<input type="file" accept="image/*,application/pdf" class="sr-only" data-zmiana="wybierzParagon('${id}', this)"></label>
+                       <button type="button" data-klik="usunParagon('${id}')" class="chip !text-[var(--c-spend)]">Usuń paragon</button>`
+                    : `<label class="chip cursor-pointer">📎 Dodaj zdjęcie lub PDF paragonu<input type="file" accept="image/*,application/pdf" class="sr-only" data-zmiana="wybierzParagon('${id}', this)"></label>`}
+                <button type="button" data-klik="zamknijSzczegolyTransakcji()" class="text-[11px] text-[var(--muted)] underline ml-auto">Zamknij</button>
             </div>
             <p id="paragon-status-${id}" class="text-[10px] text-[var(--muted)]" aria-live="polite">Zdjęcie zmniejszamy przed wysłaniem. Paragon widzi tylko ten, kto widzi ten budżet.</p>
         </div>`;
@@ -69,6 +69,7 @@ async function zapiszNotatke(id) {
     if (error) return pokazKomunikat(komunikatBledu(error, 'Nie zapisano notatki'));
     t.note = note;
     odswiezTransakcje();
+    zaplanujZapisMigawki();
     pokazKomunikat(note ? 'Zapisano notatkę' : 'Usunięto notatkę');
 }
 
@@ -109,6 +110,7 @@ async function wybierzParagon(id, input) {
     const zrodlo = input.files && input.files[0];
     input.value = '';
     if (!t || !zrodlo) return;
+    if (stan.trybOffline) return pokazKomunikat(komunikatBledu(BLAD_OFFLINE, 'Nie wysłano paragonu'));
     if (!/^image\/|^application\/pdf$/.test(zrodlo.type)) return pokazKomunikat('Paragon może być zdjęciem albo plikiem PDF');
 
     ustawStatusParagonu(id, 'Przygotowuję plik…');
@@ -141,6 +143,7 @@ async function wybierzParagon(id, input) {
     if (stary) await magazyn.remove([stary]);
     t.receipt_path = sciezka;
     odswiezTransakcje();
+    zaplanujZapisMigawki();
     pokazKomunikat('Dodano paragon');
 }
 
@@ -149,6 +152,7 @@ async function wybierzParagon(id, input) {
 async function pokazParagon(id) {
     const t = transakcjaPoId(id);
     if (!t || !t.receipt_path) return;
+    if (stan.trybOffline) return pokazKomunikat('Paragon otworzysz po powrocie internetu');
     const okno = window.open('', '_blank');
     const { data, error } = await supabaseClient.storage.from(BUCKET_PARAGONOW).createSignedUrl(t.receipt_path, WAZNOSC_LINKU_S);
     if (error || !data) {
@@ -168,6 +172,7 @@ async function usunParagon(id) {
     await usunPlikParagonu(sciezka);
     t.receipt_path = null;
     odswiezTransakcje();
+    zaplanujZapisMigawki();
     pokazKomunikat('Usunięto paragon');
 }
 

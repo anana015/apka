@@ -24,6 +24,8 @@ function zmienTrybFiltraPulpit(tryb) {
     const miesiac = tryb === 'miesiac';
     document.getElementById('btn-pulpit-miesiac').classList.toggle('is-active', miesiac);
     document.getElementById('btn-pulpit-zakres').classList.toggle('is-active', !miesiac);
+    document.getElementById('btn-pulpit-miesiac').setAttribute('aria-pressed', String(miesiac));
+    document.getElementById('btn-pulpit-zakres').setAttribute('aria-pressed', String(!miesiac));
     document.getElementById('pulpit-kontener-miesiac').classList.toggle('hidden', !miesiac);
     document.getElementById('pulpit-kontener-zakres').classList.toggle('hidden', miesiac);
     odswiezPulpit();
@@ -69,7 +71,7 @@ function odswiezPulpit() {
     // Etykiety miesięcy jak w specyfikacji (pkt 6): „Październik 2026”
     kontenerMiesiace.innerHTML = miesiace.map(m => {
         const wybrany = m === stan.miesiacWybrany;
-        return `<button type="button" onclick="wybierzMiesiacPulpit('${esc(m)}')" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(nazwaMiesiaca(m))}</button>`;
+        return `<button type="button" data-klik="wybierzMiesiacPulpit('${esc(m)}')" class="chip ${wybrany ? 'is-active' : ''}" aria-pressed="${wybrany}">${esc(nazwaMiesiaca(m))}</button>`;
     }).join('');
 
     const trybMiesiac = stan.trybFiltraPulpit === 'miesiac';
@@ -161,7 +163,7 @@ function rysujKategoriePulpitu(kategorie, trybMiesiac) {
         // Klik w wiersz: lista transakcji tej kategorii w wybranym okresie (zakładka Transakcje)
         const nazwa = kat === 'Nieprzypisane' ? 'Bez kategorii' : kat;
         return `
-            <button type="button" data-kat="${esc(kat)}" onclick="pokazTransakcjeKategorii(this.dataset.kat)"
+            <button type="button" data-kat="${esc(kat)}" data-klik="pokazTransakcjeKategorii(this.dataset.kat)"
                 class="block w-full text-left space-y-1 border-b border-[var(--border)] pb-2 -mx-1 px-1 pt-1 rounded-lg hover:bg-[var(--bg)] transition"
                 aria-label="${esc(`${nazwa}: ${zl(kwota, 2)}. Pokaż transakcje`)}">
                 <span class="flex justify-between items-center gap-2">

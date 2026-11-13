@@ -5,12 +5,12 @@
 //
 // Ustawienia są „poziomowe” – szczegóły widać dopiero po wejściu głębiej:
 //   poziom 1: menu – każda pozycja z krótkim podsumowaniem („21 kategorii · 3 z limitem”)
-//   poziom 2: strona – Kategorie, Reguły, Przelewy na konto wspólne, Subkonto wypłat, Kopia i eksport,
-//             Preferencje, Osoby w budżecie wspólnym, Zmiana hasła (dwie ostatnie: konto.js)
+//   poziom 2: strona – Kategorie, Reguły, Przelewy na konto wspólne, Subkonto wypłat,
+//             Kopia i eksport, Preferencje, Osoby w budżecie wspólnym, Zmiana hasła
 //   poziom 3: szczegóły jednej kategorii – nazwa, kolor, limit, stała, oszczędność, użycie, usuwanie
 // „‹ …” u góry zawsze cofa o jeden poziom, zębatka w nagłówku otwiera menu (app.js).
-// Kategorie, reguły, kopia i eksport dotyczą otwartego budżetu (wspólnego albo osobistego),
-// preferencje – tej przeglądarki, grupa „Konto” – zalogowanej osoby. Kopia zapasowa: kopia.js.
+// Kategorie, reguły, subkonto, kopia i eksport dotyczą otwartego budżetu (wspólnego albo
+// osobistego), preferencje – tej przeglądarki. Kopia zapasowa: kopia.js; konto i osoby: konto.js.
 // =====================================================================
 
 const NAZWY_TYPOW = {
@@ -45,18 +45,18 @@ const STRONY_USTAWIEN = {
     haslo: { tytul: 'Zmiana hasła', rodzic: 'menu' }
 };
 
-// Pozycje menu: grupa „budzet” (otwarty budżet), „urzadzenie” (ta przeglądarka) albo „konto” (zalogowana osoba)
+// Pozycje menu: grupa „budzet” (otwarty budżet), „urzadzenie” (ta przeglądarka), „konto”
 const MENU_USTAWIEN = [
     { strona: 'kategorie', grupa: 'budzet', ikona: 'tags', opis: opisMenuKategorii },
     { strona: 'reguly', grupa: 'budzet', ikona: 'list-checks',
       opis: () => liczbaIOdmiana(dynamiczneReguly.length, 'reguła', 'reguły', 'reguł') },
     { strona: 'kontoWspolne', grupa: 'budzet', ikona: 'arrow-left-right', opis: opisMenuKontaWspolnego, widoczna: czyKontoWspolneDostepne },
-    { strona: 'subkonto', grupa: 'budzet', ikona: 'piggy-bank', opis: () => opisMenuSubkonta(), widoczna: () => czySubkontoDostepne() },
+    { strona: 'subkonto', grupa: 'budzet', ikona: 'piggy-bank', opis: opisMenuSubkonta, widoczna: () => stan.ustawieniaBudzetuDostepne },
     { strona: 'dane', grupa: 'budzet', ikona: 'hard-drive-download',
       opis: () => `${liczbaIOdmiana(stan.transakcje.length, 'transakcja', 'transakcje', 'transakcji')} · zapis i wczytanie kopii, Excel` },
     { strona: 'preferencje', grupa: 'urzadzenie', ikona: 'sliders-horizontal', opis: opisMenuPreferencji },
-    { strona: 'czlonkowie', grupa: 'konto', ikona: 'users', opis: () => opisMenuCzlonkow() },
-    { strona: 'haslo', grupa: 'konto', ikona: 'key-round', opis: () => 'Nowe hasło do logowania' }
+    { strona: 'czlonkowie', grupa: 'konto', ikona: 'users', opis: opisMenuCzlonkow },
+    { strona: 'haslo', grupa: 'konto', ikona: 'key-round', opis: () => 'Wymaga obecnego hasła' }
 ];
 
 const RYSOWANIE_STRON_USTAWIEN = {
@@ -66,10 +66,10 @@ const RYSOWANIE_STRON_USTAWIEN = {
     kategoria: rysujSzczegolyKategorii,
     reguly: rysujRegulyUstawien,
     kontoWspolne: rysujKontoWspolne,
-    subkonto: () => rysujSubkonto(),
+    subkonto: rysujSubkonto,
     dane: rysujDaneUstawien,
-    czlonkowie: () => rysujCzlonkow(),
-    haslo: () => rysujZmianeHasla()
+    czlonkowie: rysujCzlonkow,
+    haslo: rysujZmianeHasla
 };
 
 const KLASA_WIERSZA_MENU = 'w-full flex items-center gap-3 px-2 py-2.5 rounded-xl text-left hover:bg-[var(--bg)] transition';
@@ -102,7 +102,8 @@ function otworzStroneUstawien(strona, opcje = {}) {
         ustawieniaPowrot: opcje.powrot || null,
         kolejnoscKategorii: false,
         wyborKategorii: null,
-        kategoriaDoUsuniecia: null
+        kategoriaDoUsuniecia: null,
+        potwierdzenie: null
     });
     if (strona === 'reguly') document.getElementById('reg-filtr').value = opcje.filtrReguly || '';
     odswiezUstawienia();
@@ -141,14 +142,16 @@ function tytulStronyUstawien(strona = stan.ustawieniaStrona, kategoriaId = stan.
     return (STRONY_USTAWIEN[strona] || STRONY_USTAWIEN.menu).tytul;
 }
 
-// Strona, której nie da się pokazać (usunięta kategoria, inny budżet), cofa poziom wyżej
+// Strona, której nie da się pokazać (usunięta kategoria, inny budżet), cofa poziom wyżej.
+// Przed wczytaniem danych (np. odświeżenie strony na #ustawienia/kategoria/<id>) czekamy.
 function sprawdzStroneUstawien() {
     const strona = stan.ustawieniaStrona;
+    const zaladowane = stan.daneZaladowane;
     if (!STRONY_USTAWIEN[strona]) stan.ustawieniaStrona = 'menu';
-    else if (strona === 'kategoria' && !kategoriaPoId(stan.ustawieniaKategoria)) stan.ustawieniaStrona = 'kategorie';
-    else if (strona === 'kontoWspolne' && !czyKontoWspolneDostepne()) stan.ustawieniaStrona = 'menu';
-    else if (strona === 'subkonto' && !czySubkontoDostepne()) stan.ustawieniaStrona = 'menu';
-    if (stan.ustawieniaPowrot && stan.ustawieniaPowrot.strona === 'kategoria' && !kategoriaPoId(stan.ustawieniaPowrot.kategoria)) {
+    else if (strona === 'kategoria' && zaladowane && !kategoriaPoId(stan.ustawieniaKategoria)) stan.ustawieniaStrona = 'kategorie';
+    else if (strona === 'kontoWspolne' && zaladowane && !czyKontoWspolneDostepne()) stan.ustawieniaStrona = 'menu';
+    else if (strona === 'subkonto' && zaladowane && !stan.ustawieniaBudzetuDostepne) stan.ustawieniaStrona = 'menu';
+    if (stan.ustawieniaPowrot && stan.ustawieniaPowrot.strona === 'kategoria' && zaladowane && !kategoriaPoId(stan.ustawieniaPowrot.kategoria)) {
         stan.ustawieniaPowrot = null;
     }
 }
@@ -174,6 +177,7 @@ function odswiezUstawienia() {
     ustawTytulKarty();
 
     RYSOWANIE_STRON_USTAWIEN[strona]();
+    if (stan.zakladka === 'ustawienia') zapiszAdresWidoku();
 }
 
 // Wstawia HTML i przywraca fokus (z wpisywanym tekstem) na element o tym samym id –
@@ -220,6 +224,11 @@ function opisMenuKontaWspolnego() {
     return regula ? `Konto …${regula.phrase.slice(-4)} → ${KATEGORIA_PRZELEW_WSPOLNE}` : 'Nie ustawiono';
 }
 
+function opisMenuSubkonta() {
+    const numer = kontoWyplatZeSkarbonek();
+    return numer ? `Subkonto …${numer.slice(-4)} – wpływy z niego to wypłaty z celów` : 'Nie ustawiono';
+}
+
 function opisMenuPreferencji() {
     const stopa = docelowaStopa();
     return `Cel oszczędzania ${liczba(stopa, stopa % 1 ? 1 : 0)}% · zapamiętywanie ${zapamietujPodobne() ? 'włączone' : 'wyłączone'}`;
@@ -228,7 +237,7 @@ function opisMenuPreferencji() {
 function wierszMenuUstawien(pozycja) {
     return `
         <li>
-            <button type="button" id="ust-poz-${pozycja.strona}" onclick="otworzStroneUstawien('${pozycja.strona}')" class="${KLASA_WIERSZA_MENU}">
+            <button type="button" id="ust-poz-${pozycja.strona}" data-klik="otworzStroneUstawien('${pozycja.strona}')" class="${KLASA_WIERSZA_MENU}">
                 <span class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)]" aria-hidden="true">
                     <i data-lucide="${pozycja.ikona}" class="w-[18px] h-[18px]"></i>
                 </span>
@@ -266,7 +275,7 @@ function rysujPreferencje() {
 
 function rysujDaneUstawien() {
     document.getElementById('ust-kopia-info').innerText =
-        `${nazwaBudzetu()} w chmurze: ${stan.transakcje.length} transakcji, ${dynamiczneReguly.length} reguł, ${stan.cele.length} celów, ${stan.kategorie.length} kategorii.`;
+        `${nazwaBudzetu()} ${stan.trybOffline ? 'na tym urządzeniu (offline)' : 'w chmurze'}: ${stan.transakcje.length} transakcji, ${dynamiczneReguly.length} reguł, ${stan.cele.length} celów, ${stan.kategorie.length} kategorii.`;
 
     // Okres eksportu: wszystkie albo jeden miesiąc (najnowszy pierwszy)
     const select = document.getElementById('ust-eksport-okres');
@@ -303,7 +312,7 @@ function wierszListyKategorii(k) {
     const cechy = cechyKategorii(k);
     return `
         <li class="break-inside-avoid border-b border-[var(--border)]">
-            <button type="button" id="kat-wiersz-${id}" onclick="otworzKategorie('${id}')"
+            <button type="button" id="kat-wiersz-${id}" data-klik="otworzKategorie('${id}')"
                 class="w-full flex items-center gap-3 px-2 py-2.5 rounded-lg text-left hover:bg-[var(--bg)] transition">
                 <span class="dot !w-3 !h-3" style="background:${esc(kolorKategoriiUstawien(k))}" aria-hidden="true"></span>
                 <span class="flex-1 min-w-0">
@@ -324,8 +333,8 @@ function wierszKolejnosciKategorii(k, i, n) {
             <span class="w-5 text-right text-[11px] text-[var(--muted)] kwota" aria-hidden="true">${i + 1}</span>
             <span class="dot !w-3 !h-3" style="background:${esc(kolorKategoriiUstawien(k))}" aria-hidden="true"></span>
             <span class="flex-1 min-w-0 text-sm truncate">${nazwa}</span>
-            <button type="button" id="kat-gora-${id}" onclick="przesunKategorie('${id}', -1)" class="${klasaStrzalki}" ${i === 0 ? 'disabled' : ''} aria-label="Przesuń ${nazwa} wyżej">▲</button>
-            <button type="button" id="kat-dol-${id}" onclick="przesunKategorie('${id}', 1)" class="${klasaStrzalki}" ${i === n - 1 ? 'disabled' : ''} aria-label="Przesuń ${nazwa} niżej">▼</button>
+            <button type="button" id="kat-gora-${id}" data-klik="przesunKategorie('${id}', -1)" class="${klasaStrzalki}" ${i === 0 ? 'disabled' : ''} aria-label="Przesuń ${nazwa} wyżej">▲</button>
+            <button type="button" id="kat-dol-${id}" data-klik="przesunKategorie('${id}', 1)" class="${klasaStrzalki}" ${i === n - 1 ? 'disabled' : ''} aria-label="Przesuń ${nazwa} niżej">▼</button>
         </li>`;
 }
 
@@ -415,6 +424,7 @@ async function dodajKategorie(e) {
 
 // Kolejność na listach: zamiana z sąsiadem, potem numeracja co 10
 async function przesunKategorie(id, kierunek) {
+    if (stan.trybOffline) return pokazKomunikat(komunikatBledu(BLAD_OFFLINE, 'Nie zmieniono kolejności'));
     const lista = stan.kategorie.slice();
     const i = lista.findIndex(k => String(k.id) === String(id));
     const j = i + kierunek;
@@ -438,6 +448,7 @@ async function przesunKategorie(id, kierunek) {
     }
     const wyniki = await Promise.all(zmiany);
     if (wyniki.some(r => r.error)) pokazKomunikat('Nie zapisano kolejności – odśwież dane');
+    zaplanujZapisMigawki();
 }
 
 // =====================================================================
@@ -456,7 +467,10 @@ function kwotaDoPola(grosze) {
 
 function rysujSzczegolyKategorii() {
     const k = kategoriaPoId(stan.ustawieniaKategoria);
-    if (!k) return;
+    if (!k) {
+        wstawHtml(document.getElementById('kat-szczegoly'), '<p class="text-xs text-[var(--muted)]">Wczytywanie kategorii…</p>');
+        return;
+    }
     const id = esc(k.id);
     const nazwa = esc(k.name);
     const kolor = kolorKategoriiUstawien(k).toLowerCase();
@@ -466,7 +480,7 @@ function rysujSzczegolyKategorii() {
 
     const probki = Object.entries(KOLORY_GRUP).map(([grupa, hex]) => {
         const wybrany = hex.toLowerCase() === kolor;
-        return `<button type="button" id="kat-kolor-${esc(grupa)}" onclick="zmienPoleKategorii('${id}', 'color', '${esc(hex)}')"
+        return `<button type="button" id="kat-kolor-${esc(grupa)}" data-klik="zmienPoleKategorii('${id}', 'color', '${esc(hex)}')"
             class="w-8 h-8 rounded-full ${wybrany ? 'ring-2 ring-offset-2 ring-[var(--fg)] ring-offset-[var(--surface)]' : ''}"
             style="background:${esc(hex)}" title="${esc(grupa)}" aria-label="Kolor: ${esc(grupa)}" aria-pressed="${wybrany}"></button>`;
     }).join('');
@@ -486,7 +500,7 @@ function rysujSzczegolyKategorii() {
 
         <div>
             <label for="kat-szcz-nazwa" class="field-label">Nazwa</label>
-            <input type="text" id="kat-szcz-nazwa" value="${nazwa}" maxlength="${MAKS_NAZWA_KATEGORII}" onchange="zmienNazweKategorii('${id}', this)"
+            <input type="text" id="kat-szcz-nazwa" value="${nazwa}" maxlength="${MAKS_NAZWA_KATEGORII}" data-zmiana="zmienNazweKategorii('${id}', this)"
                 class="input" aria-describedby="kat-szcz-nazwa-opis">
             <p id="kat-szcz-nazwa-opis" class="text-[10px] text-[var(--muted)] mt-1">Nowa nazwa przejdzie też na transakcje i reguły z tą kategorią.</p>
         </div>
@@ -496,7 +510,7 @@ function rysujSzczegolyKategorii() {
             <div class="flex flex-wrap items-center gap-3">
                 ${probki}
                 <label class="flex items-center gap-1.5 text-[11px] text-[var(--muted)] cursor-pointer">
-                    <input type="color" id="kat-szcz-kolor" value="${esc(kolor)}" onchange="zmienPoleKategorii('${id}', 'color', this.value)"
+                    <input type="color" id="kat-szcz-kolor" value="${esc(kolor)}" data-zmiana="zmienPoleKategorii('${id}', 'color', this.value)"
                         class="w-8 h-8 rounded-lg border border-[var(--border)] bg-transparent cursor-pointer">
                     własny
                 </label>
@@ -507,7 +521,7 @@ function rysujSzczegolyKategorii() {
             <label for="kat-szcz-limit" class="field-label">Limit miesięczny</label>
             <div class="flex items-center gap-2">
                 <input type="text" inputmode="decimal" id="kat-szcz-limit" value="${k.monthly_limit_gr > 0 ? esc(kwotaDoPola(k.monthly_limit_gr)) : ''}"
-                    placeholder="bez limitu" onchange="zmienLimitKategorii('${id}', this)" class="input !w-36 text-right kwota" aria-describedby="kat-szcz-limit-opis">
+                    placeholder="bez limitu" data-zmiana="zmienLimitKategorii('${id}', this)" class="input !w-36 text-right kwota" aria-describedby="kat-szcz-limit-opis">
                 <span class="text-xs">zł</span>
             </div>
             <p id="kat-szcz-limit-opis" class="text-[10px] text-[var(--muted)] mt-1">Pasek wykorzystania limitu pojawi się pod kategorią na Pulpicie. Puste pole = bez limitu.</p>
@@ -520,7 +534,7 @@ function rysujSzczegolyKategorii() {
                     <span class="text-[10px] text-[var(--muted)]">Co miesiąc podobna kwota, np. czynsz. Statystyki pokazują go w „w tym stałe” i pomijają w „Trendzie kategorii”.</span>
                 </span>
                 <input type="checkbox" id="kat-szcz-stala" role="switch" class="switch" ${k.is_fixed ? 'checked' : ''}
-                    onchange="zmienPoleKategorii('${id}', 'is_fixed', this.checked)">
+                    data-zmiana="zmienPoleKategorii('${id}', 'is_fixed', this.checked)">
             </label>
             <label class="flex items-start justify-between gap-3 text-xs cursor-pointer">
                 <span>
@@ -528,7 +542,7 @@ function rysujSzczegolyKategorii() {
                     <span class="text-[10px] text-[var(--muted)]">Płatności w tej kategorii (np. akcje, obligacje) liczą się do odłożonych pieniędzy i stopy oszczędności, a nie do wydatków.</span>
                 </span>
                 <input type="checkbox" id="kat-szcz-oszcz" role="switch" class="switch" ${czyKategoriaOszczednosciowa(k.name) ? 'checked' : ''}
-                    onchange="zmienPoleKategorii('${id}', 'is_saving', this.checked)">
+                    data-zmiana="zmienPoleKategorii('${id}', 'is_saving', this.checked)">
             </label>
         </div>
 
@@ -536,8 +550,8 @@ function rysujSzczegolyKategorii() {
             <h3 class="field-label !mb-0">Użycie</h3>
             <p class="text-xs">${esc(uzycie.join(' · '))}</p>
             <div class="flex flex-wrap gap-4">
-                ${wszystkie ? `<button type="button" data-kat="${nazwa}" onclick="pokazTransakcjeZUstawien(this.dataset.kat)" class="text-xs font-semibold text-[var(--accent)]">Pokaż transakcje ›</button>` : ''}
-                ${reguly ? `<button type="button" data-kat="${nazwa}" onclick="pokazRegulyKategorii(this.dataset.kat)" class="text-xs font-semibold text-[var(--accent)]">Pokaż reguły ›</button>` : ''}
+                ${wszystkie ? `<button type="button" data-kat="${nazwa}" data-klik="pokazTransakcjeZUstawien(this.dataset.kat)" class="text-xs font-semibold text-[var(--accent)]">Pokaż transakcje ›</button>` : ''}
+                ${reguly ? `<button type="button" data-kat="${nazwa}" data-klik="pokazRegulyKategorii(this.dataset.kat)" class="text-xs font-semibold text-[var(--accent)]">Pokaż reguły ›</button>` : ''}
             </div>
         </div>
 
@@ -551,15 +565,15 @@ function sekcjaUsuwaniaKategorii(k, reczne, reguly) {
     }
     if (String(stan.kategoriaDoUsuniecia) === String(k.id)) {
         return `
-            <div class="flex flex-wrap items-center justify-between gap-2 text-xs" role="alert">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs" role="alert" data-escape="anulujUsuwanieKategorii()">
                 <span>Usunąć kategorię <strong>${esc(k.name)}</strong>?</span>
                 <span class="flex gap-2">
-                    <button type="button" id="kat-usun-tak" onclick="usunKategorie('${id}')" class="chip !bg-[var(--c-spend)] !text-white">Usuń</button>
-                    <button type="button" id="kat-usun-nie" onclick="anulujUsuwanieKategorii()" class="chip">Anuluj</button>
+                    <button type="button" id="kat-usun-tak" data-klik="usunKategorie('${id}')" class="chip !bg-[var(--c-spend)] !text-white">Usuń</button>
+                    <button type="button" id="kat-usun-nie" data-klik="anulujUsuwanieKategorii()" class="chip">Anuluj</button>
                 </span>
             </div>`;
     }
-    return `<button type="button" id="kat-usun" onclick="pytajOUsuniecieKategorii('${id}')" class="text-xs font-semibold text-[var(--c-spend)]">Usuń kategorię</button>`;
+    return `<button type="button" id="kat-usun" data-klik="pytajOUsuniecieKategorii('${id}')" class="text-xs font-semibold text-[var(--c-spend)]">Usuń kategorię</button>`;
 }
 
 // Skrót: transakcje tej kategorii ze wszystkich miesięcy
@@ -590,14 +604,16 @@ async function zmienPoleKategorii(id, pole, wartosc) {
 async function zmienLimitKategorii(id, pole) {
     const k = kategoriaPoId(id);
     if (!k) return;
-    const tekst = pole.value.replace(/[\s ]/g, '').replace(',', '.');
+    const tekst = pole.value.replace(/[\s ]/g, '').replace(',', '.');
     if (tekst !== '' && !/^\d+(\.\d{0,2})?$/.test(tekst)) {
         pokazKomunikat('Limit podaj w złotych, np. 900. Puste pole = bez limitu.');
         pole.value = k.monthly_limit_gr > 0 ? kwotaDoPola(k.monthly_limit_gr) : '';
         return;
     }
     const grosze = tekst === '' ? null : Math.round(parseFloat(tekst) * 100);
+    const przed = k.monthly_limit_gr;
     await zmienPoleKategorii(id, 'monthly_limit_gr', grosze > 0 ? grosze : null);
+    if (k.monthly_limit_gr === przed && przed !== (grosze > 0 ? grosze : null)) return; // zapis się nie udał
     pokazKomunikat(grosze > 0 ? `Limit: ${zl(grosze)} miesięcznie` : 'Usunięto limit');
 }
 
@@ -623,19 +639,29 @@ async function zmienNazweKategorii(id, pole) {
     }
 
     const zPodzialem = stan.transakcje.filter(t => Array.isArray(t.splits) && t.splits.some(c => c.category === stara));
+    const zmienPodzial = splits => splits.map(c => (c.category === stara ? { ...c, category: nowa } : c));
     const wyniki = await Promise.all([
         supabaseClient.from('transakcje').update({ category_manual: nowa }).eq('category_manual', stara),
         supabaseClient.from('rules').update({ category: nowa }).eq('category', stara),
-        ...zPodzialem.map(t => supabaseClient.from('transakcje')
-            .update({ splits: t.splits.map(c => (c.category === stara ? { ...c, category: nowa } : c)) })
-            .eq('id', t.id))
+        ...zPodzialem.map(t => supabaseClient.from('transakcje').update({ splits: zmienPodzial(t.splits) }).eq('id', t.id))
     ]);
     const blednych = wyniki.filter(r => r.error).length;
     if (stan.statKategoria === stara) stan.statKategoria = nowa;
 
-    await pobierzDane();
+    if (blednych) {
+        // Część zapisów się nie udała – stan w pamięci mógłby się rozjechać z bazą, więc pobieramy wszystko
+        await pobierzDane();
+    } else {
+        k.name = nowa;
+        stan.transakcje.forEach(t => {
+            if (t.category_manual === stara) t.category_manual = nowa;
+            if (zPodzialem.includes(t)) t.splits = zmienPodzial(t.splits);
+        });
+        dynamiczneReguly.forEach(r => { if (r.category === stara) r.category = nowa; });
+        odswiezPoZmianie();
+    }
     pokazKomunikat(blednych
-        ? `Zmieniono nazwę, ale ${blednych} ${odmiana(blednych, 'zapis się nie udał', 'zapisy się nie udały', 'zapisów się nie udało')} – odśwież i sprawdź transakcje`
+        ? `Zmieniono nazwę, ale ${blednych} ${odmiana(blednych, 'zapis się nie udał', 'zapisy się nie udały', 'zapisów się nie udało')} – sprawdź transakcje`
         : `Zmieniono nazwę: ${stara} → ${nowa}`);
 }
 
@@ -781,7 +807,7 @@ function rysujWyborKategorii() {
             <label class="flex items-center gap-2 py-1 text-xs ${uzywana ? 'text-[var(--muted)]' : 'cursor-pointer'}">
                 <input type="checkbox" class="accent-[var(--accent)] w-4 h-4 shrink-0" data-kat="${esc(nazwa)}"
                     ${zaznaczona ? 'checked' : ''} ${uzywana ? 'disabled' : ''}
-                    onchange="przelaczWyborKategorii(this.dataset.kat, this.checked)">
+                    data-zmiana="przelaczWyborKategorii(this.dataset.kat, this.checked)">
                 <span class="dot" style="background:${esc(kolorKategorii(nazwa))}" aria-hidden="true"></span>
                 <span class="truncate">${esc(nazwa)}${uzywana ? ' <span class="text-[10px]">(w użyciu)</span>' : ''}</span>
             </label>`;
@@ -790,7 +816,7 @@ function rysujWyborKategorii() {
     panel.innerHTML = `
         <div class="flex justify-between items-baseline gap-2 flex-wrap">
             <h3 id="kat-wybor-tytul" class="text-xs font-semibold">Zaznacz kategorie, których chcesz używać w: ${esc(nazwaBudzetu().toLowerCase())}</h3>
-            <button type="button" onclick="wybierzZestawPodstawowy()" class="text-[11px] text-[var(--accent)] font-semibold underline">Tylko podstawowe</button>
+            <button type="button" data-klik="wybierzZestawPodstawowy()" class="text-[11px] text-[var(--accent)] font-semibold underline">Tylko podstawowe</button>
         </div>
         <fieldset class="grid grid-cols-1 min-[480px]:grid-cols-2 min-[1100px]:grid-cols-3 gap-x-4">
             <legend class="sr-only">Kategorie budżetu</legend>
@@ -804,8 +830,8 @@ function rysujWyborKategorii() {
         <p class="text-[10px] text-[var(--muted)]">Kategorii „w użyciu” (ręcznie wybranych w transakcjach albo w regułach) nie można odznaczyć, ale <strong>nazwę każdej kategorii, także używanej, zmienisz po kliknięciu jej na liście</strong> – nowa nazwa przejdzie na transakcje i reguły. Odznaczone, nieużywane kategorie zostaną usunięte – zawsze możesz je tu dodać z powrotem.</p>
         <p id="kat-wybor-podsumowanie" class="text-xs font-semibold" aria-live="polite"></p>
         <div class="flex gap-2 flex-wrap">
-            <button type="button" id="btn-kat-wybor-zapisz" onclick="zapiszWyborKategorii()" class="btn-primary !w-auto px-6">Zapisz listę</button>
-            <button type="button" onclick="zamknijWyborKategorii()" class="btn-secondary">Anuluj</button>
+            <button type="button" id="btn-kat-wybor-zapisz" data-klik="zapiszWyborKategorii()" class="btn-primary !w-auto px-6">Zapisz listę</button>
+            <button type="button" data-klik="zamknijWyborKategorii()" class="btn-secondary">Anuluj</button>
         </div>`;
     odswiezPodsumowanieWyboru();
 }
@@ -816,18 +842,25 @@ async function zapiszWyborKategorii() {
     document.getElementById('btn-kat-wybor-zapisz').disabled = true;
 
     const start = nastepnaKolejnosc();
-    const zapytania = [];
-    if (doDodania.length) {
-        zapytania.push(supabaseClient.from('categories').insert(doDodania.map((n, i) => wierszKategorii(n, start + i * 10))));
-    }
-    if (doUsuniecia.length) {
-        zapytania.push(supabaseClient.from('categories').delete().in('id', doUsuniecia.map(k => k.id)));
-    }
-    const wyniki = await Promise.all(zapytania);
-    const blad = wyniki.find(r => r.error);
+    const [dodane, usuniete] = await Promise.all([
+        doDodania.length
+            ? supabaseClient.from('categories').insert(doDodania.map((n, i) => wierszKategorii(n, start + i * 10))).select()
+            : null,
+        doUsuniecia.length
+            ? supabaseClient.from('categories').delete().in('id', doUsuniecia.map(k => k.id))
+            : null
+    ]);
+    const blad = [dodane, usuniete].find(r => r && r.error);
 
     stan.wyborKategorii = null;
-    await pobierzDane();
+    if (blad || (dodane && !Array.isArray(dodane.data))) {
+        await pobierzDane();
+    } else {
+        const usunieteId = new Set(doUsuniecia.map(k => String(k.id)));
+        stan.kategorie = [...stan.kategorie.filter(k => !usunieteId.has(String(k.id))), ...((dodane && dodane.data) || [])]
+            .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+        odswiezPoZmianie();
+    }
     pokazKomunikat(blad
         ? komunikatBledu(blad.error, 'Nie wszystkie zmiany kategorii się zapisały')
         : `Lista kategorii zapisana: +${doDodania.length} / −${doUsuniecia.length}`);
@@ -883,73 +916,67 @@ async function zapiszKontoWspolne(e) {
         if (!regula) return;
         const { error } = await supabaseClient.from('rules').delete().eq('id', regula.id);
         if (error) return pokazKomunikat(komunikatBledu(error, 'Nie usunięto reguły'));
-        await pobierzDane();
+        dynamiczneReguly = dynamiczneReguly.filter(r => r !== regula);
+        odswiezPoZmianie();
         return pokazKomunikat('Wyłączono automatyczne „Przelew na wspólne”');
     }
     if (!/^\d{26}$/.test(numer)) return pokazKomunikat('Podaj 26 cyfr numeru konta (bez „PL”).');
     if (!(await zapewnijKategorie(KATEGORIA_PRZELEW_WSPOLNE))) return;
 
-    const { error } = regula
-        ? await supabaseClient.from('rules').update({ phrase: numer }).eq('id', regula.id)
-        : await supabaseClient.from('rules').insert([{ phrase: numer, category: KATEGORIA_PRZELEW_WSPOLNE }]);
+    const { data, error } = regula
+        ? await supabaseClient.from('rules').update({ phrase: numer }).eq('id', regula.id).select()
+        : await supabaseClient.from('rules').insert([{ phrase: numer, category: KATEGORIA_PRZELEW_WSPOLNE }]).select();
     if (error) return pokazKomunikat(komunikatBledu(error, 'Nie zapisano reguły'));
 
-    await pobierzDane();
+    if (regula) regula.phrase = numer;
+    else if (data && data[0]) dynamiczneReguly.unshift(data[0]);
+    else await pobierzDane();
+    odswiezPoZmianie();
     const ile = przelewyNaKonto(numer).length;
     pokazKomunikat(`Zapisano: przelewy na konto wspólne → ${KATEGORIA_PRZELEW_WSPOLNE}` + (ile ? ` (${ile} już zaimportowanych)` : ''));
 }
 
 // =====================================================================
-// SUBKONTO WYPŁAT ZE SKARBONEK (otwartego budżetu)
-// Numer jest w tabeli ustawienia_budzetu (migracja 2026-11f), nie w kodzie – widzą go tylko
-// osoby z dostępem do budżetu. Używa go rules.js: kontoWyplatZeSkarbonek().
+// SUBKONTO WYPŁAT ZE SKARBONEK (tabela ustawienia_budzetu, migracja 2026-11f)
+// Jeden wiersz na budżet; numer jest w bazie, nie w kodzie (rules.js: kontoWyplatZeSkarbonek).
 // =====================================================================
 
-function czySubkontoDostepne() {
-    return !!stan.ustawieniaBudzetuDostepne;
-}
-
-function opisMenuSubkonta() {
-    const numer = kontoWyplatZeSkarbonek();
-    return numer ? `Konto …${numer.slice(-4)} · wypłaty z celów` : 'Nie ustawiono';
-}
-
-// Wpływy z danego numeru – tak samo jak w znajdzCel (rules.js)
 function wplywyZKonta(numer) {
-    if (!numer) return [];
-    return stan.transakcje.filter(t => t.amount_gr > 0 && (czystyNumer(t.account_number).includes(numer)
-        || czystyNumer(`${t.counterparty || ''} ${t.title || ''}`).includes(numer)));
+    return stan.transakcje.filter(t => t.amount_gr > 0 && numer && czystyNumer(t.account_number).includes(numer));
 }
 
 function rysujSubkonto() {
-    document.getElementById('sub-budzet').innerText = `· ${nazwaBudzetu()}`;
+    document.getElementById('sub-budzet').innerText = `· ${nazwaBudzetu().toLowerCase()}`;
     const numer = kontoWyplatZeSkarbonek();
     const pole = document.getElementById('ust-subkonto');
     if (document.activeElement !== pole) pole.value = numer;
     document.getElementById('ust-subkonto-info').innerText = numer
-        ? `Zaimportowane wpływy z tego konta: ${wplywyZKonta(numer).length}. Pole puste + „Zapisz” usuwa numer.`
-        : 'Bez numeru wypłaty ze skarbonek rozpoznajemy tylko po słowach wypłat ustawionych w celach.';
+        ? `Zaimportowane wpływy z tego subkonta: ${wplywyZKonta(numer).length}. Pole puste + „Zapisz” usuwa numer.`
+        : 'Nie ustawiono – wpływy z subkonta liczą się jak zwykłe przychody, chyba że pasują do słów wypłat celu.';
 }
 
 async function zapiszSubkontoWyplat(e) {
     e.preventDefault();
-    const numer = czystyNumer(document.getElementById('ust-subkonto').value).replace(/^PL/i, '');
-    if (numer && !/^\d{26}$/.test(numer)) return pokazKomunikat('Podaj 26 cyfr numeru subkonta (bez „PL”).');
-    const obecne = stan.ustawieniaBudzetu;
+    const numer = czystyNumer(document.getElementById('ust-subkonto').value).replace(/^PL/, '');
+    if (numer && !/^\d{10,34}$/.test(numer)) return pokazKomunikat('Podaj numer subkonta: same cyfry (zwykle 26), bez „PL”.');
     if (numer === kontoWyplatZeSkarbonek()) return pokazKomunikat('Bez zmian');
 
     const btn = document.getElementById('btn-zapisz-subkonto');
     btn.disabled = true;
-    const zmiana = { konto_wyplat: numer || null, zmieniono: new Date().toISOString() };
-    const { error } = obecne && obecne.id != null
-        ? await supabaseClient.from('ustawienia_budzetu').update(zmiana).eq('id', obecne.id)
-        : await supabaseClient.from('ustawienia_budzetu').insert([zmiana]);
+    const wiersz = stan.ustawieniaBudzetu;
+    const pola = { konto_wyplat: numer || null, zmieniono: new Date().toISOString() };
+    const { data, error } = wiersz && wiersz.id != null
+        ? await supabaseClient.from('ustawienia_budzetu').update(pola).eq('id', wiersz.id).select()
+        : await supabaseClient.from('ustawienia_budzetu').insert([pola]).select();
     btn.disabled = false;
-    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie zapisano numeru'));
+    if (error) return pokazKomunikat(komunikatBledu(error, 'Nie zapisano subkonta'));
 
-    await pobierzDane();
+    if (data && data[0]) stan.ustawieniaBudzetu = data[0];
+    else await pobierzDane();
+    odswiezPoZmianie();
+    const ile = numer ? wplywyZKonta(numer).length : 0;
     pokazKomunikat(numer
-        ? `Zapisano subkonto wypłat …${numer.slice(-4)}` + (wplywyZKonta(numer).length ? ` (${wplywyZKonta(numer).length} wpływów to teraz wypłaty z celów)` : '')
+        ? `Zapisano subkonto wypłat` + (ile ? ` (${ile} ${odmiana(ile, 'wpływ', 'wpływy', 'wpływów')} już zaimportowanych)` : '')
         : 'Usunięto numer subkonta wypłat');
 }
 
@@ -1010,16 +1037,16 @@ function rysujRegulyUstawien() {
         const n = trafienia[r.id] || 0;
         return `
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1.5 py-2 border-b border-[var(--border)] text-xs">
-                <input type="text" value="${esc(r.phrase)}" maxlength="60" onchange="zmienFrazeReguly('${id}', this)"
+                <input type="text" value="${esc(r.phrase)}" maxlength="60" data-zmiana="zmienFrazeReguly('${id}', this)"
                     class="input !py-1.5 flex-1 min-w-[8rem] ${rachunek ? 'kwota' : ''}" aria-label="Fraza reguły ${esc(r.phrase)}">
                 <span class="text-[var(--muted)]" aria-hidden="true">→</span>
-                <select onchange="zmienKategorieReguly('${id}', this.value)" class="input !py-1.5 !w-auto max-w-[13rem]" aria-label="Kategoria reguły ${esc(r.phrase)}">
+                <select data-zmiana="zmienKategorieReguly('${id}', this.value)" class="input !py-1.5 !w-auto max-w-[13rem]" aria-label="Kategoria reguły ${esc(r.phrase)}">
                     ${opcjeKategoriiReguly(r.category)}
                 </select>
                 <span class="text-[10px] text-[var(--muted)] whitespace-nowrap ml-auto" title="Transakcje, którym ta reguła nadaje kategorię">
                     ${rachunek ? 'numer konta · ' : ''}${n} ${odmiana(n, 'transakcja', 'transakcje', 'transakcji')}
                 </span>
-                <button type="button" onclick="usunRegule('${id}')" class="p-1 text-[var(--muted)] hover:text-[var(--c-spend)]" aria-label="Usuń regułę ${esc(r.phrase)}">✕</button>
+                <button type="button" data-klik="usunRegule('${id}')" class="p-1 text-[var(--muted)] hover:text-[var(--c-spend)]" aria-label="Usuń regułę ${esc(r.phrase)}">✕</button>
             </div>`;
     }).join('');
 }

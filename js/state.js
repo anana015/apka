@@ -19,6 +19,13 @@ let stan = {
     dostepWspolny: null,
     odzyskiwanieHasla: false,     // otwarto link „ustaw nowe hasło” z e-maila (konto.js)
 
+    // Dane otwartego budżetu są wczytane (z chmury albo z kopii offline) – dopiero wtedy
+    // zapisujemy ich kopię na urządzeniu (offline.js), żeby nie nadpisać jej pustym ekranem
+    daneZaladowane: false,
+    // Tryb offline (offline.js): null albo { zapisano: ISO } – dane z kopii na urządzeniu, tylko do odczytu
+    trybOffline: null,
+    ostatniePobranie: 0,          // Date.now() ostatniego udanego pobrania z chmury
+
     zakladka: 'pulpit',
     poprzedniaZakladka: 'pulpit', // skąd otwarto Ustawienia
     filtrTransakcji: 'wszystkie', // 'wszystkie' | 'brak' (do przypisania) | 'przypisane'
@@ -71,6 +78,7 @@ function wyczyscDaneBudzetu() {
         kategorieZBazy: false,
         importy: null,
         ustawieniaBudzetu: null,
+        daneZaladowane: false,
         wyborKategorii: null,
         szczegolyTransakcji: null,
         potwierdzenie: null,

@@ -30,7 +30,7 @@ function czystyNumer(tekst) {
 function liczba(wartosc, miejsca = 0) {
     const v = +Number(wartosc).toFixed(miejsca) || 0;
     const [calkowite, ulamek] = Math.abs(v).toFixed(miejsca).split('.');
-    const zGrupami = calkowite.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const zGrupami = calkowite.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
     return `${v < 0 ? '-' : ''}${zGrupami}${ulamek ? ',' + ulamek : ''}`;
 }
 

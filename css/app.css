@@ -3,6 +3,8 @@
    - telefon: pełny ekran, dolny pasek zakładek
    - komputer (od 900 px): pasek zakładek w lewej kolumnie,
      treść na całą szerokość okna, karty w dwóch kolumnach
+   Klasy narzędziowe (p-3, text-xs, min-[900px]:… itd.) pochodzą z Tailwinda:
+   css/tailwind.css, budowany z css/tailwind.src.css (npm run build:css).
    ===================================================================== */
 
 /* ---- Kolory (10.4) ---- */
@@ -44,7 +46,7 @@ body {
 h1, h2, h3, h4 { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
 .tabular-nums, .kwota { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
 
-/* Pewne ukrywanie niezależnie od kolejności arkuszy (Tailwind CDN wstrzykuje style później) */
+/* Pewne ukrywanie niezależnie od kolejności arkuszy (tailwind.css jest ładowany po app.css) */
 .hidden { display: none !important; }
 
 .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -201,6 +203,11 @@ h1, h2, h3, h4 { font-family: 'Bricolage Grotesque', system-ui, sans-serif; }
     background: #111827; color: #fff; font-size: 13px; text-align: center;
     padding: 10px 16px; border-radius: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.25);
 }
+
+/* Tryb offline (offline.js): szary nagłówek – od razu widać, że dane są tylko do podglądu.
+   Kontrast tekstu: #FFFFFF / #5A6B67 5,6 : 1, #0B1F1C / #9DB0AB 7,5 : 1 (WCAG AA). */
+body.tryb-offline .app-header { background: var(--muted); }
+body.tryb-offline #import-strefa { opacity: .5; pointer-events: none; }
 
 /* =====================================================================
    UKŁAD – KOMPUTER (od 900 px): menu w lewej kolumnie, 2 kolumny kart

@@ -74,6 +74,10 @@ function liczCeleZaWolno() {
     return stan.cele.filter(c => !c.archived && wynik[c.id].status === 'za-wolno').length;
 }
 
+function celPoId(id) {
+    return stan.cele.find(c => String(c.id) === String(id)) || null;
+}
+
 // ---- Nawigacja lista <-> szczegóły -----------------------------------
 
 function otworzSzczegolyCelu(id) {
@@ -100,14 +104,18 @@ function edytujZeSzczegolow(id) {
 // ---- Główne odświeżenie ----------------------------------------------
 
 function odswiezCele() {
-    const cel = stan.otwartyCel ? stan.cele.find(c => String(c.id) === stan.otwartyCel) : null;
-    if (stan.otwartyCel && !cel) stan.otwartyCel = null; // cel usunięty w międzyczasie
+    const cel = stan.otwartyCel ? celPoId(stan.otwartyCel) : null;
+    // Cel usunięty w międzyczasie. Przed wczytaniem danych (np. odświeżenie strony na #cele/<id>)
+    // nie zamykamy szczegółów – cel pojawi się po pobraniu.
+    if (stan.otwartyCel && !cel && stan.daneZaladowane) stan.otwartyCel = null;
 
-    document.querySelectorAll('#tab-cele .cele-lista').forEach(el => el.classList.toggle('hidden', !!cel));
-    document.getElementById('cel-szczegoly').classList.toggle('hidden', !cel);
+    document.querySelectorAll('#tab-cele .cele-lista').forEach(el => el.classList.toggle('hidden', !!stan.otwartyCel));
+    document.getElementById('cel-szczegoly').classList.toggle('hidden', !stan.otwartyCel);
 
     if (cel) rysujSzczegolyCelu(cel);
+    else if (stan.otwartyCel) document.getElementById('cel-szczegoly').innerHTML = '<p class="card text-xs text-[var(--muted)]">Wczytywanie celu…</p>';
     else rysujListeCelow();
+    if (stan.zakladka === 'cele') zapiszAdresWidoku();
 }
 
 // ---- 8.2 Lista celów -------------------------------------------------
@@ -117,7 +125,7 @@ function kartaCelu(c, a, zakonczony = false) {
     const kolor = kolorCelu(c);
     const id = esc(c.id);
     return `
-        <article class="card space-y-2.5 cursor-pointer hover:ring-1 hover:ring-[var(--border)] transition ${zakonczony ? 'opacity-70' : ''}" onclick="otworzSzczegolyCelu('${id}')">
+        <article class="card space-y-2.5 cursor-pointer hover:ring-1 hover:ring-[var(--border)] transition ${zakonczony ? 'opacity-70' : ''}" data-klik="otworzSzczegolyCelu('${id}')">
             <div class="flex justify-between items-start gap-2 text-xs">
                 <div class="min-w-0">
                     <h3 class="font-bold text-sm truncate">${esc(c.name)}</h3>
@@ -140,11 +148,11 @@ function kartaCelu(c, a, zakonczony = false) {
                 <span>Postęp: ${procent}%${a.terminKlucz ? ` · do ${esc(miesiacRokDopelniacz(a.terminKlucz))}` : ''}</span>
                 <div class="space-x-3 whitespace-nowrap">
                     ${zakonczony
-                        ? `<button type="button" onclick="event.stopPropagation(); zakonczCel('${id}', false)" class="text-[var(--accent)] font-semibold hover:underline">Przywróć</button>`
-                        : `<button type="button" onclick="event.stopPropagation(); otworzFormularzCelu('${id}')" class="text-[var(--accent)] font-semibold hover:underline">Edytuj</button>`}
-                    <button type="button" id="cel-usun-${id}" onclick="event.stopPropagation(); pytajOUsuniecieCelu('${id}')" class="text-[var(--c-spend)] hover:underline"
+                        ? `<button type="button" data-klik="event.stopPropagation(); zakonczCel('${id}', false)" class="text-[var(--accent)] font-semibold hover:underline">Przywróć</button>`
+                        : `<button type="button" data-klik="event.stopPropagation(); otworzFormularzCelu('${id}')" class="text-[var(--accent)] font-semibold hover:underline">Edytuj</button>`}
+                    <button type="button" id="cel-usun-${id}" data-klik="event.stopPropagation(); pytajOUsuniecieCelu('${id}')" class="text-[var(--c-spend)] hover:underline"
                         aria-expanded="${czyPotwierdzenie('cel-usun', c.id)}">Usuń</button>
-                    <button type="button" onclick="event.stopPropagation(); otworzSzczegolyCelu('${id}')" class="text-[var(--fg)] font-semibold hover:underline">Szczegóły ›</button>
+                    <button type="button" data-klik="event.stopPropagation(); otworzSzczegolyCelu('${id}')" class="text-[var(--fg)] font-semibold hover:underline">Szczegóły ›</button>
                 </div>
             </div>
             ${potwierdzenieUsunieciaCelu(c)}
@@ -180,7 +188,7 @@ function rysujListeCelow() {
         document.getElementById('cele-wplacone').innerText = '0 zł';
         document.getElementById('cele-wplacone-proc').innerText = '';
         boxZakonczone.classList.add('hidden');
-        if (document.getElementById('modal-cel').classList.contains('hidden')) otworzFormularzCelu();
+        if (stan.daneZaladowane && !stan.trybOffline && document.getElementById('modal-cel').classList.contains('hidden')) otworzFormularzCelu();
         return;
     }
 
@@ -297,10 +305,10 @@ function akcjeSzczegolowCelu(c) {
     }
     return `
         <div class="flex gap-2 flex-wrap">
-            <button type="button" onclick="edytujZeSzczegolow('${id}')" class="btn-secondary">Edytuj cel</button>
+            <button type="button" data-klik="edytujZeSzczegolow('${id}')" class="btn-secondary">Edytuj cel</button>
             ${c.archived
-                ? `<button type="button" onclick="zakonczCel('${id}', false)" class="btn-secondary">Przywróć cel</button>`
-                : `<button type="button" id="cel-zakoncz-${id}" onclick="pytajOZakonczenieCelu('${id}')" class="btn-secondary !text-[var(--c-spend)]">Zakończ cel</button>`}
+                ? `<button type="button" data-klik="zakonczCel('${id}', false)" class="btn-secondary">Przywróć cel</button>`
+                : `<button type="button" id="cel-zakoncz-${id}" data-klik="pytajOZakonczenieCelu('${id}')" class="btn-secondary !text-[var(--c-spend)]">Zakończ cel</button>`}
         </div>`;
 }
 
@@ -323,7 +331,7 @@ function rysujSzczegolyCelu(c) {
     document.getElementById('cel-szczegoly').innerHTML = `
         <div class="space-y-3">
             <div class="flex justify-between items-center">
-                <button type="button" onclick="zamknijSzczegolyCelu()" class="text-sm font-semibold text-[var(--accent)]">‹ Cele</button>
+                <button type="button" data-klik="zamknijSzczegolyCelu()" class="text-sm font-semibold text-[var(--accent)]">‹ Cele</button>
                 ${c.archived ? '<span class="status-label text-[var(--muted)]">Zakończony</span>' : etykietaStatusu(a.status)}
             </div>
 
@@ -412,21 +420,23 @@ async function zakonczCel(id, zakoncz = true) {
     const zapisz = async () => {
         const { error } = await supabaseClient.from('goals').update({ archived: zakoncz }).eq('id', id);
         if (error) {
-            pokazKomunikat('Nie udało się zapisać: ' + error.message);
+            pokazKomunikat(komunikatBledu(error, 'Nie udało się zapisać'));
             return false;
         }
         return true;
     };
     const udane = zakoncz ? await wykonajPotwierdzenie('cel-zakoncz', id, odswiezCele, zapisz) : await zapisz();
     if (!udane) return;
+    const cel = celPoId(id);
+    if (cel) cel.archived = zakoncz;
     stan.otwartyCel = null;
-    await pobierzDane();
+    odswiezPoZmianie();
     pokazKomunikat(zakoncz ? 'Zakończono cel' : 'Przywrócono cel');
 }
 
 // Wywoływane tylko przyciskiem „Usuń cel” w potwierdzeniu
 async function usunCel(id) {
-    const cel = stan.cele.find(c => String(c.id) === String(id));
+    const cel = celPoId(id);
     const udane = await wykonajPotwierdzenie('cel-usun', id, odswiezCele, async () => {
         const { error } = await supabaseClient.from('goals').delete().eq('id', id);
         if (error) {
@@ -436,7 +446,8 @@ async function usunCel(id) {
         return true;
     });
     if (!udane) return;
-    await pobierzDane();
+    stan.cele = stan.cele.filter(c => String(c.id) !== String(id));
+    odswiezPoZmianie();
     pokazKomunikat(cel ? `Usunięto cel ${cel.name}` : 'Usunięto cel');
 }
 
@@ -558,7 +569,7 @@ function pokazBladCelu(tresc) {
 function otworzFormularzCelu(id = null) {
     stan.potwierdzenie = null;
     document.getElementById('modal-cel').classList.remove('hidden');
-    const cel = id ? stan.cele.find(x => String(x.id) === String(id)) : null;
+    const cel = id ? celPoId(id) : null;
     const terminCelu = cel && cel.deadline ? String(cel.deadline).slice(0, 7) : '';
 
     document.getElementById('modal-tytul').innerText = cel ? 'Edytuj cel oszczędnościowy' : 'Dodaj nowy cel oszczędnościowy';
@@ -632,7 +643,7 @@ async function zapiszCel(e) {
     pokazBladCelu('');
 
     const { id, ...pola } = dane;
-    const istniejacy = id ? stan.cele.find(c => String(c.id) === String(id)) : null;
+    const istniejacy = id ? celPoId(id) : null;
     // Kolor nadawany automatycznie z palety; starszy cel bez koloru dostaje go przy edycji
     if (!istniejacy) pola.color = kolorDlaNowegoCelu();
     else if (!istniejacy.color) pola.color = kolorCelu(istniejacy);
@@ -640,13 +651,22 @@ async function zapiszCel(e) {
     const btn = document.getElementById('btn-zapisz-cel');
     btn.disabled = true;
     const res = istniejacy
-        ? await supabaseClient.from('goals').update(pola).eq('id', id)
-        : await supabaseClient.from('goals').insert([pola]);
+        ? await supabaseClient.from('goals').update(pola).eq('id', id).select()
+        : await supabaseClient.from('goals').insert([pola]).select();
     btn.disabled = false;
 
     if (res.error) return pokazBladCelu(komunikatBledu(res.error, 'Nie zapisano celu'));
 
     zamknijFormularzCelu();
-    await pobierzDane();
+    const zapisany = res.data && res.data[0];
+    if (zapisany) {
+        // Zapisany wiersz z bazy (z id i wartościami domyślnymi) zastępuje / uzupełnia listę
+        stan.cele = istniejacy
+            ? stan.cele.map(c => (String(c.id) === String(id) ? zapisany : c))
+            : [...stan.cele, zapisany];
+        odswiezPoZmianie();
+    } else {
+        await pobierzDane();
+    }
     pokazKomunikat(istniejacy ? 'Zapisano cel' : 'Dodano nowy cel');
 }

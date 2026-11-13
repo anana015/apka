@@ -240,7 +240,7 @@ function rysujTrendKategorii(d) {
     if (przyciski.dataset.klucz !== klucz) {
         przyciski.dataset.klucz = klucz;
         przyciski.innerHTML = kategorie.map(k => `
-            <button type="button" data-kat="${esc(k)}" onclick="wybierzKategorieTrendu(this.dataset.kat)"
+            <button type="button" data-kat="${esc(k)}" data-klik="wybierzKategorieTrendu(this.dataset.kat)"
                 class="chip stat-chip" aria-pressed="false">
                 ${esc(k)}
             </button>`).join('');

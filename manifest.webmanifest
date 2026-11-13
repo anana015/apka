@@ -1,0 +1,25 @@
+{
+    "name": "Budżet Domowy",
+    "short_name": "Budżet",
+    "description": "Budżet wspólny i osobisty: import wyciągów CSV, kategorie, cele oszczędnościowe i statystyki.",
+    "lang": "pl",
+    "dir": "ltr",
+    "id": "./",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#F3F6F5",
+    "theme_color": "#0D7367",
+    "categories": ["finance", "productivity"],
+    "icons": [
+        { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+        { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ],
+    "shortcuts": [
+        { "name": "Import wyciągu", "short_name": "Import", "url": "./#import" },
+        { "name": "Transakcje", "short_name": "Transakcje", "url": "./#transakcje" },
+        { "name": "Cele oszczędnościowe", "short_name": "Cele", "url": "./#cele" }
+    ]
+}

@@ -3,17 +3,26 @@
 // (ładowany jako ostatni – korzysta ze wszystkich pozostałych plików)
 // =====================================================================
 
+const ODSWIEZ_PO_POWROCIE_MS = 5 * 60 * 1000; // powrót do karty po 5 min = świeże dane (druga osoba mogła coś zmienić)
+
 async function sprawdzSesje() {
+    let sesja = null;
+    let blad = null;
     try {
-        const { data: { session }, error } = await supabaseClient.auth.getSession();
-        if (error) throw error;
-        // Link „ustaw nowe hasło” z e-maila: sesja jest, ale najpierw formularz nowego hasła
-        if (session && (LINK_Z_EMAILA.reset || stan.odzyskiwanieHasla)) pokazNoweHaslo(session.user);
-        else if (session) pokazAplikacje(session.user);
-        else pokazEkranLogowania({ blad: bladLinkuZEmaila() });
+        const { data, error } = await supabaseClient.auth.getSession();
+        sesja = data && data.session;
+        blad = error;
     } catch (err) {
-        pokazEkranLogowania({ blad: bladLinkuZEmaila() });
+        blad = err;
     }
+    // Link „ustaw nowe hasło” z e-maila: sesja jest, ale najpierw formularz nowego hasła
+    if (sesja && (LINK_Z_EMAILA.reset || stan.odzyskiwanieHasla)) return pokazNoweHaslo(sesja.user);
+    if (sesja) return pokazAplikacje(sesja.user);
+    // Bez internetu wygasłej sesji nie da się odświeżyć: otwieramy kopię danych ostatniego
+    // konta z tego urządzenia (tylko podgląd). Po powrocie sieci sesja jest sprawdzana od nowa.
+    const konto = kontoOffline();
+    if (konto && czyBladSieci(blad)) return pokazAplikacje({ id: konto.id, email: konto.email });
+    pokazEkranLogowania({ blad: bladLinkuZEmaila() });
 }
 
 async function obsluzLogowanie(e) {
@@ -48,7 +57,7 @@ async function wyloguj() {
     zakonczSesjeLokalnie();
 }
 
-// Dane (także osobiste) nie mogą zostać w pamięci dla kolejnej osoby na tym urządzeniu.
+// Dane (także osobiste) nie mogą zostać w pamięci ani na urządzeniu dla kolejnej osoby.
 // Wywoływane też, gdy sesja skończy się sama (wylogowanie w innej karcie, odebrany dostęp).
 function zakonczSesjeLokalnie() {
     stan.uzytkownikId = null;
@@ -56,8 +65,11 @@ function zakonczSesjeLokalnie() {
     stan.budzet = 'wspolny';
     stan.dostepWspolny = null;
     stan.odzyskiwanieHasla = false;
+    wylaczTrybOffline();
     wyczyscDaneBudzetu();
     imp = nowyStanImportu();
+    usunDaneOffline();
+    wylaczHistorie();
     pokazEkranLogowania();
 }
 
@@ -67,10 +79,12 @@ function pokazAplikacje(uzytkownik) {
     stan.odzyskiwanieHasla = false;
     stan.dostepWspolny = null; // sprawdza pobierzDane – dla tej osoby, nie poprzedniej
     stan.budzet = zapamietanyBudzet();
+    if (stan.uzytkownikId) zapamietajKontoOffline(stan.uzytkownikId, stan.uzytkownikEmail);
     odswiezPrzelacznikBudzetu();
 
     document.getElementById('ekran-logowania').classList.add('hidden');
     document.getElementById('glowna-aplikacja').classList.remove('hidden');
+    wlaczHistorie();
     pobierzDane();
 }
 
@@ -87,7 +101,7 @@ if (supabaseClient) {
     supabaseClient.auth.onAuthStateChange((zdarzenie, sesja) => {
         if (zdarzenie === 'PASSWORD_RECOVERY' && sesja) {
             setTimeout(() => pokazNoweHaslo(sesja.user), 0);
-        } else if (zdarzenie === 'SIGNED_OUT' && stan.uzytkownikId) {
+        } else if (zdarzenie === 'SIGNED_OUT' && stan.uzytkownikId && !stan.trybOffline) {
             setTimeout(zakonczSesjeLokalnie, 0);
         }
     });
@@ -242,6 +256,7 @@ function zmienZakladke(nazwa, opcje = {}) {
     ustawTytulKarty();
     document.getElementById('app-main').scrollTop = 0;
     odswiezAktywnyEkran();
+    zapiszAdresWidoku();
 }
 
 const ODSWIEZANIE_EKRANOW = {
@@ -271,13 +286,30 @@ function odswiezInterfejs() {
     badgeCele.classList.toggle('hidden', zaWolno === 0);
 
     odswiezAktywnyEkran();
+    zaplanujZapisMigawki(); // kopia na urządzeniu nadąża za zmianami (offline.js)
 }
+
+// ---- Powrót internetu i powrót do karty -----------------------------
+
+// Sieć wróciła: najpierw sesja (mogła wygasnąć), potem świeże dane
+window.addEventListener('online', () => {
+    if (stan.trybOffline) sprawdzSesje();
+});
+
+// Druga osoba mogła w tym czasie coś zmienić. Nie odświeżamy, gdy na ekranie jest
+// niedokończona edycja (podział, notatka, potwierdzenie, import, wczytywanie kopii).
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !stan.uzytkownikId || stan.trybOffline) return;
+    if (Date.now() - stan.ostatniePobranie < ODSWIEZ_PO_POWROCIE_MS) return;
+    const edycja = stan.podzial || stan.szczegolyTransakcji || stan.potwierdzenie ||
+        czyWczytanieKopiiTrwa() || imp.etap === 'zapis' ||
+        !document.getElementById('modal-cel').classList.contains('hidden');
+    if (!edycja) pobierzDane();
+});
 
 // ---- Start ----
 try {
     lucide.createIcons();
 } catch (e) {}
 
-window.onload = function() {
-    sprawdzSesje();
-};
+window.addEventListener('load', sprawdzSesje);
