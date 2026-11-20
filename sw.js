@@ -4,16 +4,16 @@
 // Pliki aplikacji (ta sama domena): najpierw sieć, a gdy jej nie ma albo odpowiada dłużej
 // niż LIMIT_SIECI_MS – kopia z pamięci podręcznej. Dzięki temu po wgraniu nowej wersji
 // na GitHub Pages użytkownik od razu dostaje nowe pliki, a bez internetu aplikacja i tak startuje.
-// Czcionki Google: najpierw pamięć podręczna (nie zmieniają się).
+// Czcionki są w repozytorium (fonts/) – jak pozostałe pliki aplikacji.
 // Supabase (dane, logowanie, paragony) NIE przechodzi przez pamięć podręczną – dane budżetu
 // offline trzyma offline.js w IndexedDB, osobno dla każdej osoby, i usuwa je przy wylogowaniu.
 //
 // Po zmianie listy plików albo strategii zmień WERSJA – stare kopie zostaną usunięte.
 // =====================================================================
 
-const WERSJA = '2026-11-13.2';
+const WERSJA = '2026-11-20.1';
 const CACHE_APLIKACJI = `budzet-aplikacja-${WERSJA}`;
-const CACHE_CZCIONEK = 'budzet-czcionki-v1';
+const STARY_CACHE_CZCIONEK = 'budzet-czcionki-v1';   // dawne Google Fonts – usuwany przy aktywacji
 const LIMIT_SIECI_MS = 4000;
 
 const PLIKI_APLIKACJI = [
@@ -22,6 +22,21 @@ const PLIKI_APLIKACJI = [
     'manifest.webmanifest',
     'css/app.css',
     'css/tailwind.css',
+    'css/czcionki.css',
+    'fonts/bricolage-grotesque-latin-600-normal.woff2',
+    'fonts/bricolage-grotesque-latin-700-normal.woff2',
+    'fonts/bricolage-grotesque-latin-ext-600-normal.woff2',
+    'fonts/bricolage-grotesque-latin-ext-700-normal.woff2',
+    'fonts/ibm-plex-mono-latin-500-normal.woff2',
+    'fonts/ibm-plex-mono-latin-700-normal.woff2',
+    'fonts/ibm-plex-mono-latin-ext-500-normal.woff2',
+    'fonts/ibm-plex-mono-latin-ext-700-normal.woff2',
+    'fonts/source-sans-3-latin-400-normal.woff2',
+    'fonts/source-sans-3-latin-600-normal.woff2',
+    'fonts/source-sans-3-latin-700-normal.woff2',
+    'fonts/source-sans-3-latin-ext-400-normal.woff2',
+    'fonts/source-sans-3-latin-ext-600-normal.woff2',
+    'fonts/source-sans-3-latin-ext-700-normal.woff2',
     'icons/favicon.svg',
     'icons/icon-192.png',
     'icons/icon-512.png',
@@ -31,6 +46,8 @@ const PLIKI_APLIKACJI = [
     'js/vendor/papaparse-5.4.1.min.js',
     'js/vendor/lucide-1.70.0.min.js',
     'js/zdarzenia.js',
+    'js/bezpieczenstwo.js',
+    'js/szyfrowanie.js',
     'js/config.js',
     'js/utils.js',
     'js/state.js',
@@ -51,6 +68,7 @@ const PLIKI_APLIKACJI = [
     'js/views/oszczednosci.js',
     'js/views/kopia.js',
     'js/views/konto.js',
+    'js/views/historia.js',
     'js/views/ustawienia.js',
     'js/app.js',
     'js/pwa.js'
@@ -71,7 +89,7 @@ self.addEventListener('activate', zdarzenie => {
     zdarzenie.waitUntil((async () => {
         const nazwy = await caches.keys();
         await Promise.all(nazwy
-            .filter(n => n.startsWith('budzet-aplikacja-') && n !== CACHE_APLIKACJI)
+            .filter(n => (n.startsWith('budzet-aplikacja-') && n !== CACHE_APLIKACJI) || n === STARY_CACHE_CZCIONEK)
             .map(n => caches.delete(n)));
         await self.clients.claim();
     })());
@@ -84,8 +102,6 @@ self.addEventListener('fetch', zdarzenie => {
 
     if (adres.origin === self.location.origin) {
         zdarzenie.respondWith(najpierwSiec(zadanie));
-    } else if (adres.hostname === 'fonts.googleapis.com' || adres.hostname === 'fonts.gstatic.com') {
-        zdarzenie.respondWith(najpierwPamiec(zadanie, CACHE_CZCIONEK));
     }
     // Pozostałe (Supabase) – zwykłe zapytanie sieciowe, bez pamięci podręcznej
 });
@@ -109,13 +125,4 @@ async function najpierwSiec(zadanie) {
         if (zapisana) return zapisana;
         return zSieci; // brak kopii – czekamy dalej na sieć (albo zwracamy jej błąd)
     }
-}
-
-async function najpierwPamiec(zadanie, nazwaCache) {
-    const cache = await caches.open(nazwaCache);
-    const zapisana = await cache.match(zadanie);
-    if (zapisana) return zapisana;
-    const odpowiedz = await fetch(zadanie);
-    if (odpowiedz.ok || odpowiedz.type === 'opaque') cache.put(zadanie, odpowiedz.clone());
-    return odpowiedz;
 }

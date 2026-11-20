@@ -203,3 +203,78 @@ test('promocja: opisy i przypomnienie na karcie celu', () => {
 test('historia: progi z promocją', () => {
     assert.equal(ctx.wartoscWHistorii('interest_tiers', { tiers: [{}, {}], promo: { rate: 7.5 } }), '2 progi + promocja 7,5%');
 });
+
+test('prognoza: symulacja salda z wpłatami i odsetkami, wymagana wpłata', () => {
+    const bez = { tryb: 'nadwyzka', progi: [{ od: 0, stopa: 0 }], promocja: null };
+    const s = ctx.symulacjaSalda({ saldo: 100000, od: '2026-11-01', wplata: 50000, pierwszaWplata: '2026-12', doKlucza: '2027-03', oprocentowanie: bez });
+    assert.equal(s.wplaty, 4 * 50000);           // 1.12, 1.01, 1.02, 1.03
+    assert.equal(s.saldo, 100000 + 200000);
+    assert.equal(s.odsetki, 0);
+    // wymagana wpłata bez odsetek = brakująca kwota / liczba wpłat (w górę do grosza)
+    assert.equal(ctx.wymaganaWplata({ saldo: 100000, od: '2026-11-01', pierwszaWplata: '2026-12', doKlucza: '2027-03', oprocentowanie: bez }, 400000), 75000);
+    // z odsetkami wystarczy mniej
+    const zOds = { tryb: 'nadwyzka', progi: [{ od: 0, stopa: 10 }], promocja: null };
+    const w = ctx.wymaganaWplata({ saldo: 100000, od: '2026-11-01', pierwszaWplata: '2026-12', doKlucza: '2027-03', oprocentowanie: zOds }, 400000);
+    assert.ok(w < 75000 && w > 70000, `wpłata ${w}`);
+    assert.ok(ctx.symulacjaSalda({ saldo: 100000, od: '2026-11-01', wplata: w, pierwszaWplata: '2026-12', doKlucza: '2027-03', oprocentowanie: zOds }).saldo >= 400000);
+    assert.ok(ctx.symulacjaSalda({ saldo: 100000, od: '2026-11-01', wplata: w - 1, pierwszaWplata: '2026-12', doKlucza: '2027-03', oprocentowanie: zOds }).saldo < 400000);
+    // miesiąc osiągnięcia celu
+    const k = ctx.symulacjaSalda({ saldo: 0, od: '2026-11-01', wplata: 100000, pierwszaWplata: '2026-11', doKlucza: '2030-01', oprocentowanie: bez, cel: 250000, zatrzymajNaCelu: true });
+    assert.equal(k.miesiacOsiagniecia, '2027-01');
+});
+
+test('prognoza celu: z terminem (zdąży / nie zdąży) i bez terminu', () => {
+    const dzis = new Date(2026, 10, 20);
+    const cel = { target_gr: 1000000, deadline: '2027-06-01', interest_rate: 0 };
+    const a = { saldo: 400000, srednia: 100000, M: '2026-10', terminKlucz: '2027-06', brakuje: 600000 };
+    const p = ctx.prognozaCelu(cel, a, dzis);
+    // wpłaty od listopada 2026 (M = październik) do czerwca 2027 = 8 × 1000 zł
+    assert.equal(p.wplaty, 800000);
+    assert.equal(p.saldoNaTermin, 1200000);
+    assert.equal(p.zdazy, true);
+    assert.equal(p.wymagana, null);
+    assert.equal(p.osiagniecie, '2027-04');
+    const wolno = ctx.prognozaCelu(cel, { ...a, srednia: 50000 }, dzis);
+    assert.equal(wolno.zdazy, false);
+    assert.equal(wolno.wymagana, 75000);
+    const bezTerminu = ctx.prognozaCelu({ target_gr: 1000000, interest_rate: 0 }, { ...a, terminKlucz: null }, dzis);
+    assert.equal(bezTerminu.termin, null);
+    assert.equal(bezTerminu.osiagniecie, '2027-04');
+    assert.equal(ctx.prognozaCelu({ target_gr: 1000000, interest_rate: 0 }, { ...a, srednia: 0, terminKlucz: null }, dzis).osiagniecie, null);
+});
+
+test('przeniesienie: walidacja i brak wpływu na średnią wpłat', () => {
+    const dzis = '2026-11-20';
+    assert.deepEqual(zwykly(ctx.sprawdzPrzeniesienie({ doCelu: 'b', kwota: '500', data: dzis, opis: '' }, 100000, 'a', dzis)),
+        { przeniesienie: { doCelu: 'b', kwota: 50000, date: dzis, note: '' } });
+    assert.match(ctx.sprawdzPrzeniesienie({ doCelu: '', kwota: '500', data: dzis }, 100000, 'a', dzis).blad, /Wybierz cel/);
+    assert.match(ctx.sprawdzPrzeniesienie({ doCelu: 'a', kwota: '500', data: dzis }, 100000, 'a', dzis).blad, /inny cel/);
+    assert.match(ctx.sprawdzPrzeniesienie({ doCelu: 'b', kwota: '1500', data: dzis }, 100000, 'a', dzis).blad, /nie przeniesiesz więcej/);
+    const ops = [
+        ctx.operacjaCeluZRecznej({ id: '1', date: '2026-10-01', amount_gr: 60000 }),
+        ctx.operacjaCeluZRecznej({ id: '2', date: '2026-10-02', amount_gr: 30000, transfer: { id: 't', goal_id: 'x' } })
+    ];
+    const a = ctx.analizaCelu({ target_gr: 1000000 }, ops, '2026-10', { netto: 0, kapitalizacje: [] });
+    assert.equal(a.saldo, 90000);       // przeniesienie zmienia saldo…
+    assert.equal(a.srednia, 10000);     // …ale nie średnią wpłat (60 000 / 6)
+});
+
+test('gdzie trzymać pieniądze: porównanie i podpowiedź przy końcu promocji', () => {
+    const dzis = '2027-01-25';
+    const a = { id: 'a', name: 'Promo', interest_tiers: { mode: 'marginal', tiers: [{ from_gr: 0, rate: 0.5 }], promo: { rate: 7, from: '2026-11-01', months: 3, max_gr: 0 } } };
+    const b = { id: 'b', name: 'Lepsze', interest_tiers: { mode: 'marginal', tiers: [{ from_gr: 0, rate: 4 }] } };
+    const c = { id: 'c', name: 'Zwykłe', interest_rate: 0 };
+    const w = ctx.porownanieOprocentowania([a, b, c], { a: 2000000, b: 100000, c: 50000 }, dzis);
+    assert.equal(+w[0].teraz.toFixed(6), 7);
+    assert.equal(+w[0].poPromocji.toFixed(6), 0.5);
+    assert.equal(+w[1].kolejne.toFixed(6), 4);
+    const pp = ctx.podpowiedziPrzeniesienia(w, dzis);
+    assert.equal(pp.length, 1);
+    assert.equal(pp[0].z.id, 'a');
+    assert.equal(pp[0].do.id, 'b');
+    assert.equal(pp[0].kwota, 2000000);
+    assert.equal(Math.round(pp[0].zysk), Math.round(2000000 * 0.035 * 0.81)); // (4% − 0,5%) od 20 000 zł, po podatku
+    assert.equal(pp[0].dzien, '2027-02-01');
+    // daleko od końca promocji – bez podpowiedzi
+    assert.equal(ctx.podpowiedziPrzeniesienia(ctx.porownanieOprocentowania([a, b], { a: 2000000, b: 0 }, '2026-11-10'), '2026-11-10').length, 0);
+});

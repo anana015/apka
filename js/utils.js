@@ -1,0 +1,102 @@
+// =====================================================================
+// NARZĘDZIA
+// =====================================================================
+
+// Escapowanie tekstu wstawianego do innerHTML (ochrona przed XSS z pliku CSV)
+function esc(wartosc) {
+    return String(wartosc ?? '').replace(/[&<>"']/g, z => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[z]));
+}
+
+// Wielkie litery bez polskich znaków: "Żabka" -> "ZABKA"
+const ZNAKI_DIAKRYTYCZNE = new RegExp('[\\u0300-\\u036f]', 'g');
+function normalizuj(tekst) {
+    return String(tekst || '')
+        .toUpperCase()
+        .replace(/Ł/g, 'L')
+        .normalize('NFD')
+        .replace(ZNAKI_DIAKRYTYCZNE, '');
+}
+
+// Numer konta / słowo kluczowe bez spacji i cudzysłowów
+function czystyNumer(tekst) {
+    return String(tekst || '').replace(/['"\s]+/g, '').toUpperCase();
+}
+
+// Liczba w polskim formacie: 4996 -> "4 996", 12400.5 -> "12 400,5" (bez "-0").
+// Ręcznie, bo toLocaleString('pl-PL') nie grupuje liczb 4-cyfrowych („4996 zł”),
+// a specyfikacja (pkt 6) wymaga spacji jako separatora tysięcy. Spacja twarda – kwota się nie łamie.
+function liczba(wartosc, miejsca = 0) {
+    const v = +Number(wartosc).toFixed(miejsca) || 0;
+    const [calkowite, ulamek] = Math.abs(v).toFixed(miejsca).split('.');
+    const zGrupami = calkowite.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return `${v < 0 ? '-' : ''}${zGrupami}${ulamek ? ',' + ulamek : ''}`;
+}
+
+// Grosze -> "12 345 zł" / "12 345,67 zł"
+function zl(grosze, miejsca = 0) {
+    return `${liczba(grosze / 100, miejsca)} zł`;
+}
+
+// Grosze ze znakiem -> "+12,50 zł" / "−12,50 zł" (lista transakcji, podgląd importu)
+function zlZeZnakiem(grosze) {
+    const znak = grosze > 0 ? '+' : grosze < 0 ? '−' : '';
+    return `${znak}${liczba(Math.abs(grosze) / 100, 2)} zł`;
+}
+
+// Jak długo pokazywać komunikat: 2,6 s (specyfikacja 10.2) + 50 ms na znak, najwyżej 10 s;
+// z przyciskiem (np. „Cofnij”) co najmniej 8 s – tyle jest czasu na zmianę zdania
+const KOMUNIKAT_MIN_MS = 2600;
+const KOMUNIKAT_NA_ZNAK_MS = 50;
+const KOMUNIKAT_MAKS_MS = 10000;
+const KOMUNIKAT_Z_AKCJA_MS = 8000;
+function czasKomunikatu(tresc, zAkcja = false) {
+    const czas = Math.min(KOMUNIKAT_MAKS_MS, KOMUNIKAT_MIN_MS + String(tresc || '').length * KOMUNIKAT_NA_ZNAK_MS);
+    return zAkcja ? Math.max(czas, KOMUNIKAT_Z_AKCJA_MS) : czas;
+}
+
+// Polska odmiana: odmiana(2, 'subkonto', 'subkonta', 'subkont') -> 'subkonta'
+function odmiana(n, jeden, kilka, wiele) {
+    if (n === 1) return jeden;
+    const d = n % 10, s = n % 100;
+    return d >= 2 && d <= 4 && (s < 12 || s > 14) ? kilka : wiele;
+}
+
+// Klucz "2026-10" -> "Październik 2026" (wybór miesiąca, pkt 6 i 7.1).
+// Tablice nazw miesięcy są w calc.js (wywołanie dopiero po załadowaniu wszystkich plików).
+function nazwaMiesiaca(klucz) {
+    const m = Number(String(klucz).slice(5, 7));
+    return m ? `${MIESIACE_PELNE[m - 1]} ${String(klucz).slice(0, 4)}` : String(klucz);
+}
+
+// Klucz "2026-10" -> "październiku 2026" (do zdań „w …”)
+function nazwaMiesiacaMiejscownik(klucz) {
+    const m = Number(String(klucz).slice(5, 7));
+    return m ? `${MIESIACE_MIEJSCOWNIK[m - 1]} ${String(klucz).slice(0, 4)}` : String(klucz);
+}
+
+// Wartość zmiennej CSS (np. '--c-spend')
+function kolorCSS(nazwa) {
+    return getComputedStyle(document.documentElement).getPropertyValue(nazwa).trim();
+}
+
+// ---- Kategorie ------------------------------------------------------
+
+function kategoriaPoNazwie(nazwa) {
+    return (stan.kategorie || []).find(k => k.name === nazwa) || null;
+}
+
+// Kolor kategorii: z tabeli categories, a gdy go brak – wg grup ze specyfikacji (10.4)
+function kolorKategorii(nazwa) {
+    if (nazwa === 'Nieprzypisane') return 'var(--muted)';
+    const k = kategoriaPoNazwie(nazwa);
+    if (k && k.color) return k.color;
+    return KOLORY_GRUP[GRUPA_KATEGORII[nazwa]] || KOLORY_GRUP.Inne;
+}
+
+// Wydatek stały (pole is_fixed): podpis „w tym stałe” i pominięcie w „Trendzie kategorii”
+function czyKategoriaStala(nazwa) {
+    const k = kategoriaPoNazwie(nazwa);
+    return k ? !!k.is_fixed : KATEGORIE_STALE.includes(nazwa);
+}

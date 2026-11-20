@@ -313,6 +313,8 @@
                     <p class="tile-value kwota text-[var(--c-save)]" id="cele-wplacone">0 zł</p>
                     <span class="tile-note" id="cele-wplacone-proc"></span>
                 </div>
+                <!-- Gdzie trzymać pieniądze: porównanie oprocentowania celów (rysuje cele.js) -->
+                <div id="cele-porownanie" class="hidden span-all cele-lista"></div>
 
                 <!-- 8.4 Formularz dodawania / edycji celu -->
                 <div id="modal-cel" class="hidden card span-all space-y-3 border border-[var(--border)]">
@@ -328,8 +330,9 @@
                             <input type="text" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input kwota" data-wpis="odswiezPrzykladOdsetek()">
                         </div>
                         <div>
-                            <label for="cel-termin" class="field-label">Termin</label>
-                            <input type="month" id="cel-termin" required class="input">
+                            <label for="cel-termin" class="field-label">Termin <span class="font-normal text-[var(--muted)]">– opcjonalnie</span></label>
+                            <input type="month" id="cel-termin" class="input" aria-describedby="cel-termin-opis">
+                            <p id="cel-termin-opis" class="text-[10px] text-[var(--muted)] mt-1">Bez terminu (np. poduszka finansowa) aplikacja pokaże, kiedy osiągniesz cel w obecnym tempie.</p>
                         </div>
                         <div>
                             <label for="cel-keyword" class="field-label">Nr subkonta celu (wpłaty) <span class="font-normal text-[var(--muted)]">– opcjonalnie</span></label>

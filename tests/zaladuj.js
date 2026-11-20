@@ -20,8 +20,9 @@ const PLIKI_LOGIKI = [
     'js/views/transakcje.js'
 ];
 
-function zaladuj(pliki = PLIKI_LOGIKI) {
+function zaladuj(pliki = PLIKI_LOGIKI, dodatki = {}) {
     const kontekst = vm.createContext({
+        ...dodatki,
         console,
         TextDecoder,
         Papa: require('papaparse'),

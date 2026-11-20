@@ -1,0 +1,16 @@
+# Nagłówki bezpieczeństwa dla hostingu, który je obsługuje (Cloudflare Pages, Netlify).
+# GitHub Pages ten plik ignoruje – tam działa tylko CSP z <meta> w index.html i ochrona
+# przed ramkami w js/bezpieczenstwo.js. Szczegóły: README.md → „Hosting z nagłówkami”.
+# CSP musi być zgodna z <meta http-equiv="Content-Security-Policy"> w index.html
+# (+ frame-ancestors, którego nie da się ustawić w <meta>).
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+/sw.js
+  Cache-Control: no-cache

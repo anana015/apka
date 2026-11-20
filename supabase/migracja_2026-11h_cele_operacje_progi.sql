@@ -14,6 +14,9 @@
 --    Puste (NULL) = dotychczasowe pola interest_rate / interest_threshold_gr (aplikacja zapisuje
 --    w nich nadal pierwszy oprocentowany próg – starsza wersja aplikacji też coś pokaże).
 -- 3. goals.keyword może być pusty: cel bez subkonta w wyciągach prowadzi się operacjami ręcznymi.
+-- 4. goals.deadline może być pusty: cel bez terminu (aplikacja prognozuje, kiedy zostanie osiągnięty).
+--    Przeniesienie między celami = para operacji ręcznych z polem "transfer": { id, goal_id }.
+--    Promocja oprocentowania = interest_tiers.promo: { rate, from, months, max_gr }.
 --
 -- Obie kolumny są w tabeli goals, więc działają bez zmian: zasady RLS (2026-11b, 11f, 11g),
 -- historia zmian (wyzwalacze 2026-11g), kopia zapasowa i jej wczytanie (wczytaj_kopie
@@ -27,6 +30,9 @@ alter table public.goals add column if not exists interest_tiers jsonb;
 -- kolumna mogła być NOT NULL; puste pole aplikacja zapisuje jako NULL (unikalność numeru
 -- – jeśli jest – nie obejmuje wartości NULL).
 alter table public.goals alter column keyword drop not null;
+
+-- Termin celu jest opcjonalny (np. poduszka finansowa) – w bazie według specyfikacji mógł być NOT NULL
+alter table public.goals alter column deadline drop not null;
 
 -- Limity (NOT VALID = sprawdzane tylko nowe i zmieniane wiersze, jak w migracji 2026-11g)
 do $$
