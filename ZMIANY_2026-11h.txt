@@ -1,0 +1,20 @@
+Budżet domowy – paczka zmian 2026-11h (cele: operacje ręczne i progi oprocentowania)
+
+Kolejność wgrywania:
+1. Supabase → SQL Editor: uruchom supabase/migracja_2026-11h_cele_operacje_progi.sql (można ponownie).
+2. Skopiuj pliki z paczki do repozytorium (zastępują istniejące, ścieżki jak w repo).
+3. npm run build:css  (nowe klasy w formularzu celu) i wgraj też css/tailwind.css.
+4. npm test – powinien przejść, w tym nowy tests/cele.test.js.
+5. Wgraj na hosting i odśwież aplikację raz (service worker pobierze nowe pliki).
+
+Pliki w paczce:
+  index.html                 formularz celu: progi oprocentowania, subkonto opcjonalne
+  README.md                  instrukcja aktualizacji 2026-11h
+  js/config.js               PLIK_MIGRACJI -> 2026-11h
+  js/state.js                stan formularza operacji ręcznej
+  js/calc.js                 progi odsetek, operacje ręczne w saldzie
+  js/views/cele.js           UI celu: operacje ręczne, edytor progów, kafelek odsetek
+  js/views/statystyki.js     „Saldo subkont” z operacjami ręcznymi
+  js/views/historia.js       etykiety nowych pól + poprawione nazwy pól celu
+  supabase/migracja_2026-11h_cele_operacje_progi.sql
+  tests/cele.test.js

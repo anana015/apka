@@ -41,6 +41,9 @@ let stan = {
     pulpitDataOd: '',
     pulpitDataDo: '',
     otwartyCel: null,             // id celu z otwartymi szczegółami (8.3)
+    // Formularz „Wpłata / wypłata ręczna” w szczegółach celu (cele.js):
+    // null albo { celId, typ: 'wplata' | 'wyplata', zapis: bool, blad: '' }
+    operacjaCelu: null,
     statKategoria: null, // kategoria wybrana w karcie „Trend kategorii”
     transakcje: [],
     cele: [],
@@ -91,6 +94,7 @@ function wyczyscDaneBudzetu() {
         podzial: null,
         miesiacWybrany: null,
         otwartyCel: null,
+        operacjaCelu: null,
         statKategoria: null,
         kategoriaDoUsuniecia: null,
         kolejnoscKategorii: false,

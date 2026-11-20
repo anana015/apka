@@ -15,8 +15,9 @@ const PREFIKS_CELU = 'SKARBONKA:';
 
 // Plik z migracją bazy – podawany w komunikatach, gdy brakuje tabeli, kolumny lub funkcji
 // (najnowszy skrypt; wymaga wcześniejszych: migracja_2026-11.sql, 2026-11b_budzet_osobisty,
-// 2026-11c_kategorie_oszczednosci, 2026-11d_notatki_paragony, 2026-11e_wczytaj_kopie)
-const PLIK_MIGRACJI = 'supabase/migracja_2026-11f_dostep_i_ustawienia.sql';
+// 2026-11c_kategorie_oszczednosci, 2026-11d_notatki_paragony, 2026-11e_wczytaj_kopie,
+// 2026-11f_dostep_i_ustawienia, 2026-11g_bezpieczenstwo)
+const PLIK_MIGRACJI = 'supabase/migracja_2026-11h_cele_operacje_progi.sql';
 
 // Kategorie startowe budżetu wspólnego. Przy pierwszym uruchomieniu trafiają do tabeli
 // categories, potem użytkownik zmienia je w Ustawieniach. Bez tabeli w bazie aplikacja używa tej listy.
@@ -75,9 +76,9 @@ const KATEGORIE_OSZCZEDNOSCIOWE = ['Akcje/Obligacje'];
 const DOCELOWA_STOPA_DOMYSLNA = 15;
 
 // ---- Oprocentowanie subkont celów -----------------------------------
-// Wartości domyślne dla celów, które nie mają własnych ustawień (pola interest_rate,
-// interest_threshold_gr w tabeli goals). Odsetki są szacowane: bank dopisuje je na
-// subkoncie, więc nie widać ich w wyciągu z konta głównego.
+// Wartości domyślne dla celów, które nie mają własnych ustawień (pola interest_tiers albo
+// interest_rate / interest_threshold_gr w tabeli goals). Odsetki są szacowane: bank dopisuje je na
+// subkoncie, więc nie widać ich w wyciągu z konta głównego. Progi: progiOdsetek() w calc.js.
 const ODSETKI_STOPA_DOMYSLNA = 0.5;          // % w skali roku
 const ODSETKI_PROG_DOMYSLNY_GR = 100000;     // 1000 zł – odsetki tylko od nadwyżki ponad próg
 const PODATEK_BELKI = 0.19;                  // podatek od zysków kapitałowych

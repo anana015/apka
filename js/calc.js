@@ -70,7 +70,7 @@ function podsumuj(lista) {
     return s;
 }
 
-// Saldo każdego celu: saldo początkowe + wpłaty − wypłaty (wszystkie transakcje)
+// Saldo każdego celu: saldo początkowe + wpłaty − wypłaty (przelewy z wyciągów i operacje ręczne)
 // + szacowane odsetki po podatku
 function saldaCelow() {
     const ops = operacjeCelow();
@@ -95,14 +95,29 @@ function odsetkiCelowMiesiecznie() {
     return wynik;
 }
 
+// Operacje ręczne wszystkich celów netto w podziale na miesiące: { 'RRRR-MM': grosze ze znakiem }.
+// Nie ma ich w wyciągach, więc wykres „Saldo subkont” (Statystyki) odejmuje je osobno.
+function operacjeReczneMiesiecznie() {
+    const wynik = {};
+    stan.cele.forEach(c => {
+        operacjeReczneCelu(c).forEach(o => {
+            const klucz = o.date.slice(0, 7);
+            wynik[klucz] = (wynik[klucz] || 0) + o.amount_gr;
+        });
+    });
+    return wynik;
+}
+
 // =====================================================================
 // ODSETKI NA SUBKONTACH (szacunek)
-// Odsetki naliczane dziennie od salda na koniec dnia ponad próg (np. 1000 zł),
+// Odsetki naliczane dziennie od salda na koniec dnia według progów oprocentowania,
 // dopisywane w ostatnim dniu miesiąca kapitalizacji po potrąceniu podatku Belki.
 // Liczymy tylko do końca ostatniego pełnego miesiąca – bieżące odsetki bank dopisze później.
 // =====================================================================
 
 const DZIEN_MS = 86400000;
+const MAKS_PROGOW_ODSETEK = 3;
+const MAKS_STOPA_ODSETEK = 20;   // % rocznie – ochrona przed literówką (np. 50 zamiast 5,0)
 
 function dataUTC(iso) {
     const [r, m, d] = String(iso).slice(0, 10).split('-').map(Number);
@@ -125,7 +140,8 @@ function poczatekHistorii() {
     return min;
 }
 
-// Oprocentowanie celu: własne ustawienia albo domyślne z config.js
+// Jeden poziom oprocentowania celu (stare pola interest_rate / interest_threshold_gr)
+// albo wartości domyślne z config.js. Używane, gdy cel nie ma progów (interest_tiers).
 function parametryOdsetek(cel) {
     const stopa = cel.interest_rate == null || cel.interest_rate === '' ? ODSETKI_STOPA_DOMYSLNA : Number(cel.interest_rate);
     const prog = cel.interest_threshold_gr == null ? ODSETKI_PROG_DOMYSLNY_GR : Number(cel.interest_threshold_gr);
@@ -136,13 +152,63 @@ function parametryOdsetek(cel) {
 }
 
 /**
+ * Progi oprocentowania celu: { tryb, progi: [{ od: grosze, stopa: % rocznie }] } (rosnąco po „od”).
+ *  - tryb 'nadwyzka': każda część salda ma stopę swojego progu (do następnego progu);
+ *    poniżej pierwszego progu – 0%. Jeden próg = dawne „X% od nadwyżki ponad Y zł”.
+ *  - tryb 'calosc': całe saldo ma stopę najwyższego progu, do którego sięga saldo.
+ * Źródło: kolumna interest_tiers = { mode: 'marginal' | 'whole', tiers: [{ from_gr, rate }] }
+ * (migracja 2026-11h); bez niej – jeden próg z parametryOdsetek().
+ */
+function progiOdsetek(cel = {}) {
+    const zapisane = cel.interest_tiers;
+    if (zapisane && Array.isArray(zapisane.tiers)) {
+        const progi = zapisane.tiers
+            .map(p => ({ od: Math.max(0, Math.round(Number(p && p.from_gr) || 0)), stopa: Number(p && p.rate) }))
+            .filter(p => Number.isFinite(p.stopa) && p.stopa >= 0)
+            .sort((a, b) => a.od - b.od)
+            .slice(0, MAKS_PROGOW_ODSETEK);
+        if (progi.length) return { tryb: zapisane.mode === 'whole' ? 'calosc' : 'nadwyzka', progi };
+    }
+    const { stopa, prog } = parametryOdsetek(cel);
+    return { tryb: 'nadwyzka', progi: [{ od: prog, stopa }] };
+}
+
+function czyOprocentowany(oprocentowanie) {
+    return !!oprocentowanie && oprocentowanie.progi.some(p => p.stopa > 0);
+}
+
+// Odsetki brutto za cały rok od stałego salda (grosze, z ułamkami) – czysta funkcja
+function odsetkiRoczneOdSalda(saldo, { tryb, progi }) {
+    if (!(saldo > 0)) return 0;
+    if (tryb === 'calosc') {
+        let stopa = 0;
+        for (const p of progi) if (saldo >= p.od) stopa = p.stopa;
+        return saldo * stopa / 100;
+    }
+    let suma = 0;
+    progi.forEach((p, i) => {
+        const gora = i + 1 < progi.length ? progi[i + 1].od : Infinity;
+        const czesc = Math.min(saldo, gora) - p.od;
+        if (czesc > 0) suma += czesc * p.stopa / 100;
+    });
+    return suma;
+}
+
+// Oprocentowanie efektywne (% rocznie, przed podatkiem) przy danym saldzie
+function stopaEfektywna(saldo, oprocentowanie) {
+    return saldo > 0 ? (odsetkiRoczneOdSalda(saldo, oprocentowanie) / saldo) * 100 : 0;
+}
+
+/**
  * Czysta funkcja: odsetki subkonta w okresie [od, doDnia].
  * operacje: [{ data: 'RRRR-MM-DD', kwota: grosze ze znakiem (+ wpłata, − wypłata) }]
+ * oprocentowanie: wynik progiOdsetek(); bez niego – jeden próg z { stopa, prog } (dawny zapis).
  * Zwraca { brutto, podatek, netto, kapitalizacje: [{ data, brutto, podatek, netto }] }.
  */
-function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa, prog = 0 }) {
+function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa = 0, prog = 0, oprocentowanie = null }) {
     const wynik = { brutto: 0, podatek: 0, netto: 0, kapitalizacje: [] };
-    if (!(stopa > 0) || !od || !doDnia || od > doDnia) return wynik;
+    const opr = oprocentowanie || { tryb: 'nadwyzka', progi: [{ od: Math.max(0, prog || 0), stopa }] };
+    if (!czyOprocentowany(opr) || !od || !doDnia || od > doDnia) return wynik;
 
     const zmiany = {};
     let saldo = saldoPoczatkowe;
@@ -151,14 +217,13 @@ function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa
         else zmiany[o.data] = (zmiany[o.data] || 0) + o.kwota;
     }
 
-    const dzienna = stopa / 100 / DNI_W_ROKU_ODSETKI;
     const koniec = dataUTC(doDnia);
     let narosle = 0; // odsetki brutto od ostatniej kapitalizacji (ułamki groszy)
 
     for (let t = dataUTC(od); t <= koniec; t += DZIEN_MS) {
         const iso = isoZDaty(t);
         if (zmiany[iso]) saldo += zmiany[iso];
-        narosle += Math.max(0, saldo - prog) * dzienna;
+        narosle += odsetkiRoczneOdSalda(saldo, opr) / DNI_W_ROKU_ODSETKI;
 
         const jutro = new Date(t + DZIEN_MS);
         const ostatniDzienMiesiaca = jutro.getUTCDate() === 1;
@@ -181,22 +246,24 @@ function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa
 }
 
 // Odsetki jednego celu z jego operacji (z operacjeCelow()).
+// Liczymy od początku historii wyciągów albo od pierwszej operacji celu, jeśli była wcześniej
+// (cel prowadzony tylko operacjami ręcznymi też dostaje odsetki).
 // Zakończony cel nie łapie nowych przelewów, więc odsetki liczymy tylko do jego ostatniej operacji.
 function odsetkiCelu(cel, operacje = [], dzis = new Date()) {
-    const { stopa, prog } = parametryOdsetek(cel);
     let doDnia = koniecOstatniegoPelnegoMiesiaca(dzis);
     if (cel.archived) {
-        const ostatnia = operacje.reduce((m, o) => (o.t.booked_on > m ? o.t.booked_on : m), '');
+        const ostatnia = operacje.reduce((m, o) => (o.data > m ? o.data : m), '');
         if (!ostatnia) return odsetkiSubkonta({});
         if (ostatnia < doDnia) doDnia = ostatnia;
     }
+    let od = poczatekHistorii();
+    for (const o of operacje) if (!od || o.data < od) od = o.data;
     return odsetkiSubkonta({
         saldoPoczatkowe: cel.opening_balance_gr || 0,
-        operacje: operacje.map(o => ({ data: o.t.booked_on, kwota: o.typ === 'wplata' ? o.kwota : -o.kwota })),
-        od: poczatekHistorii(),
+        operacje: operacje.map(o => ({ data: o.data, kwota: o.typ === 'wplata' ? o.kwota : -o.kwota })),
+        od,
         doDnia,
-        stopa,
-        prog
+        oprocentowanie: progiOdsetek(cel)
     });
 }
 
@@ -204,6 +271,19 @@ function odsetkiCelu(cel, operacje = [], dzis = new Date()) {
 // CELE (specyfikacja, punkt 8.1). Przypisanie transakcji do celu robi
 // klasyfikuj() w rules.js – tu tylko liczymy na gotowej klasyfikacji.
 // =====================================================================
+
+const MAKS_OPERACJI_RECZNYCH = 500;   // na jeden cel (kolumna goals.manual_operations)
+
+// Operacje ręczne celu (kolumna manual_operations, migracja 2026-11h): wpłaty i wypłaty,
+// których nie ma w wyciągu z konta głównego, np. subkonto zasilane z innego konta, gotówka.
+// Format: [{ id, date: 'RRRR-MM-DD', amount_gr: grosze ze znakiem (+ wpłata, − wypłata), note }].
+// Niepoprawne wpisy (np. ręcznie zepsuty plik kopii) pomijamy.
+function operacjeReczneCelu(cel) {
+    const lista = cel && cel.manual_operations;
+    if (!Array.isArray(lista)) return [];
+    return lista.filter(o => o && /^\d{4}-\d{2}-\d{2}$/.test(String(o.date || '')) &&
+        Number.isInteger(o.amount_gr) && o.amount_gr !== 0);
+}
 
 // Najnowszy klucz miesiąca z transakcjami (M); bez danych – bieżący miesiąc
 function ostatniMiesiacDanych(dzis = new Date()) {
@@ -220,16 +300,29 @@ function roznicaMiesiecy(a, b) {
     return (Number(b.slice(0, 4)) - Number(a.slice(0, 4))) * 12 + (Number(b.slice(5, 7)) - Number(a.slice(5, 7)));
 }
 
-// Operacje każdego celu: { [celId]: [{ t, typ: 'wplata'|'wyplata', kwota (gr, dodatnia), klucz }] }
+// Operacje każdego celu: { [celId]: [{ t, data, typ: 'wplata'|'wyplata', kwota (gr, dodatnia), klucz, reczna }] }
+//  - przelewy z wyciągów: t = transakcja, reczna = null
+//  - operacje ręczne: t = null, reczna = wpis z manual_operations
 function operacjeCelow() {
     const wynik = {};
     stan.cele.forEach(c => { wynik[c.id] = []; });
     for (const t of stan.transakcje) {
         const k = klasyfikuj(t);
         if (!k.cel || !(k.cel.id in wynik) || (k.typ !== 'wplata' && k.typ !== 'wyplata')) continue;
-        wynik[k.cel.id].push({ t, typ: k.typ, kwota: Math.abs(t.amount_gr), klucz: t.booked_on.substring(0, 7) });
+        wynik[k.cel.id].push({ t, data: t.booked_on, typ: k.typ, kwota: Math.abs(t.amount_gr), klucz: t.booked_on.substring(0, 7), reczna: null });
     }
+    stan.cele.forEach(c => {
+        for (const o of operacjeReczneCelu(c)) wynik[c.id].push(operacjaCeluZRecznej(o));
+    });
     return wynik;
+}
+
+// Wpis z manual_operations w formacie operacjeCelow()
+function operacjaCeluZRecznej(o) {
+    return {
+        t: null, data: o.date, typ: o.amount_gr > 0 ? 'wplata' : 'wyplata',
+        kwota: Math.abs(o.amount_gr), klucz: o.date.slice(0, 7), reczna: o
+    };
 }
 
 /**

@@ -347,19 +347,27 @@ function rysujOdchylenia(d) {
 
 // ---- 9.2.6 Saldo subkont --------------------------------------------
 
+// Salda na koniec kolejnych miesięcy wierszy w, liczone od końca (czysta funkcja – testy):
+// saldo ostatniego miesiąca = dzisiejsze saldo bez odsetek i operacji ręcznych z późniejszych miesięcy;
+// dla wcześniejszych miesięcy odejmujemy odłożone netto z wyciągów, dopisane odsetki
+// i operacje ręczne (tych nie ma w wyciągach, więc nie ma ich w w[i].netto).
+// odsetki, reczne: { 'RRRR-MM': grosze }
+function saldaSubkontOdKonca(w, saldoDzis, odsetki = {}, reczne = {}) {
+    const ostatni = w[w.length - 1].klucz;
+    const pozniej = mapa => Object.entries(mapa).filter(([klucz]) => klucz > ostatni).reduce((s, [, v]) => s + v, 0);
+    const salda = new Array(w.length);
+    salda[w.length - 1] = saldoDzis - pozniej(odsetki) - pozniej(reczne);
+    for (let i = w.length - 2; i >= 0; i--) {
+        const k = w[i + 1].klucz;
+        salda[i] = salda[i + 1] - w[i + 1].netto - (odsetki[k] || 0) - (reczne[k] || 0);
+    }
+    return salda;
+}
+
 function rysujSaldoSubkont(d) {
     const w = d.wiersze;
-    const odsetki = odsetkiCelowMiesiecznie();
-    // Saldo na koniec ostatniego miesiąca: dzisiejsze saldo bez odsetek dopisanych później
-    const odsetkiPozniej = Object.entries(odsetki)
-        .filter(([klucz]) => klucz > w[w.length - 1].klucz)
-        .reduce((s, [, v]) => s + v, 0);
-    const saldoDzis = Object.values(saldaCelow()).reduce((a, b) => a + b, 0) - odsetkiPozniej;
-
-    // Liczone od końca: dla wcześniejszych miesięcy odejmujemy odłożone netto i dopisane odsetki
-    const salda = new Array(w.length);
-    salda[w.length - 1] = saldoDzis;
-    for (let i = w.length - 2; i >= 0; i--) salda[i] = salda[i + 1] - w[i + 1].netto - (odsetki[w[i + 1].klucz] || 0);
+    const saldoDzis = Object.values(saldaCelow()).reduce((a, b) => a + b, 0);
+    const salda = saldaSubkontOdKonca(w, saldoDzis, odsetkiCelowMiesiecznie(), operacjeReczneMiesiecznie());
 
     const wZl = salda.map(v => v / 100);
     const max = okraglaGora(Math.max(...wZl, 0));

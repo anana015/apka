@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <!-- Content-Security-Policy: tylko skrypty z tej strony (bez inline JS – zdarzenia obsługuje js/zdarzenia.js),
-         połączenia tylko do Supabase. 'unsafe-inline' w style-src dotyczy wyłącznie atrybutów style="…"
+         połączenia tylko do Supabase, czcionki z własnego katalogu fonts/ (żadnych zewnętrznych serwerów –
+         Google nie widzi adresów IP osób korzystających z aplikacji). 'unsafe-inline' w style-src dotyczy wyłącznie atrybutów style="…"
          (kolory kategorii i szerokości pasków liczone w JS). -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0D7367" media="(prefers-color-scheme: light)">
@@ -21,9 +22,9 @@
     <link rel="icon" href="icons/icon-192.png" type="image/png" sizes="192x192">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <title>Mój Budżet Domowy</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+    <!-- Czcionki w repozytorium (licencja SIL OFL: fonts/LICENCJA-OFL.txt) -->
+    <link rel="preload" href="fonts/source-sans-3-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="css/czcionki.css">
     <link rel="stylesheet" href="css/app.css">
     <!-- Tailwind zbudowany lokalnie (npm run build:css) – po app.css, tak jak dawniej skrypt CDN -->
     <link rel="stylesheet" href="css/tailwind.css">
@@ -76,16 +77,36 @@
                 <input type="email" id="nowe-haslo-login" autocomplete="username" class="hidden" tabindex="-1" aria-hidden="true" readonly>
                 <div>
                     <label for="nowe-haslo" class="field-label">Nowe hasło</label>
-                    <input type="password" id="nowe-haslo" required minlength="8" maxlength="72" autocomplete="new-password" class="input" aria-describedby="nowe-haslo-wskazowka">
-                    <p id="nowe-haslo-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 8 znaków. Nie używaj hasła z innych serwisów.</p>
+                    <input type="password" id="nowe-haslo" required minlength="12" maxlength="72" autocomplete="new-password" class="input" aria-describedby="nowe-haslo-wskazowka">
+                    <p id="nowe-haslo-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 12 znaków – np. kilka losowych słów. Nie używaj hasła z innych serwisów.</p>
                 </div>
                 <div>
                     <label for="nowe-haslo-2" class="field-label">Powtórz nowe hasło</label>
-                    <input type="password" id="nowe-haslo-2" required minlength="8" maxlength="72" autocomplete="new-password" class="input">
+                    <input type="password" id="nowe-haslo-2" required minlength="12" maxlength="72" autocomplete="new-password" class="input">
+                </div>
+                <div id="nowe-haslo-kod-pole" class="hidden">
+                    <label for="nowe-haslo-kod" class="field-label">Kod z aplikacji uwierzytelniającej</label>
+                    <input type="text" id="nowe-haslo-kod" inputmode="numeric" autocomplete="one-time-code" maxlength="7" class="input kwota text-center tracking-[0.3em]">
                 </div>
                 <button type="submit" id="btn-nowe-haslo" class="btn-primary">Zapisz hasło</button>
                 <button type="button" data-klik="wyloguj()" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">Anuluj i wyloguj</button>
             </form>
+
+            <!-- Po haśle (bezpieczenstwo.js): kod z aplikacji albo – gdy MFA jest wymagane – jego włączenie -->
+            <form id="form-mfa" data-wyslij="potwierdzKodMfa(event)" class="hidden space-y-4 text-left" novalidate>
+                <p class="text-xs text-[var(--muted)]">Wpisz 6-cyfrowy kod z aplikacji uwierzytelniającej dla <strong id="mfa-email"></strong>.</p>
+                <div>
+                    <label for="mfa-kod" class="field-label">Kod weryfikacyjny</label>
+                    <input type="text" id="mfa-kod" inputmode="numeric" autocomplete="one-time-code" maxlength="7" required class="input kwota text-center text-lg tracking-[0.3em]">
+                </div>
+                <button type="submit" id="btn-mfa" class="btn-primary">Potwierdź</button>
+                <button type="button" data-klik="wyloguj()" class="block mx-auto text-xs font-semibold text-[var(--accent)] hover:underline">Anuluj i wyloguj</button>
+                <p class="text-[10px] text-[var(--muted)]">Zgubiony telefon? Druga osoba z budżetu może wyłączyć wymaganie MFA, a administrator usunąć Twój składnik w Supabase (README.md → „Utrata dostępu do MFA”).</p>
+            </form>
+            <div id="form-mfa-wlacz" class="hidden space-y-3 text-left">
+                <p class="text-xs">W tym budżecie weryfikacja dwuetapowa jest <strong>wymagana</strong>. Włącz ją, żeby zobaczyć dane.</p>
+                <div id="mfa-wlacz-tresc" class="space-y-3"></div>
+            </div>
 
             <div id="login-error" role="alert" class="hidden text-xs text-left text-[var(--c-spend)] p-3 rounded-xl border border-current"></div>
             <div id="login-info" role="status" class="hidden text-xs text-left p-3 rounded-xl border border-[var(--border)]"></div>
@@ -304,16 +325,16 @@
                         </div>
                         <div>
                             <label for="cel-kwota" class="field-label">Kwota docelowa (zł)</label>
-                            <input type="text" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input kwota">
+                            <input type="text" inputmode="decimal" id="cel-kwota" required placeholder="14000" class="input kwota" data-wpis="odswiezPrzykladOdsetek()">
                         </div>
                         <div>
                             <label for="cel-termin" class="field-label">Termin</label>
                             <input type="month" id="cel-termin" required class="input">
                         </div>
                         <div>
-                            <label for="cel-keyword" class="field-label">Nr subkonta celu (wpłaty)</label>
-                            <input type="text" id="cel-keyword" required inputmode="numeric" placeholder="26 cyfr numeru subkonta tego celu" class="input" aria-describedby="cel-keyword-opis" data-wpis="odswiezPodpowiedzSalda()">
-                            <p id="cel-keyword-opis" class="text-[10px] text-[var(--muted)] mt-1">Przelew na ten numer = wpłata do celu.</p>
+                            <label for="cel-keyword" class="field-label">Nr subkonta celu (wpłaty) <span class="font-normal text-[var(--muted)]">– opcjonalnie</span></label>
+                            <input type="text" id="cel-keyword" inputmode="numeric" placeholder="26 cyfr numeru subkonta tego celu" class="input" aria-describedby="cel-keyword-opis" data-wpis="odswiezPodpowiedzSalda()">
+                            <p id="cel-keyword-opis" class="text-[10px] text-[var(--muted)] mt-1">Przelew na ten numer = wpłata do celu. Zostaw puste, jeśli cel nie jest powiązany z kontem głównym – saldo zmienisz wtedy operacjami ręcznymi w szczegółach celu.</p>
                         </div>
                         <div>
                             <label for="cel-keywords-out" class="field-label">Słowa kluczowe wypłat (po przecinku)</label>
@@ -335,22 +356,30 @@
                                     </label>
                                     <label class="flex items-start gap-2 cursor-pointer">
                                         <input type="radio" name="cel-saldo-typ" id="cel-saldo-dzis" class="mt-0.5 accent-[var(--accent)]" data-zmiana="odswiezPodpowiedzSalda()">
-                                        <span><span class="font-semibold">Dzisiejsze saldo w banku</span><span class="block text-[10px] text-[var(--muted)]">Aplikacja odejmie przelewy już zaimportowane</span></span>
+                                        <span><span class="font-semibold">Dzisiejsze saldo w banku</span><span class="block text-[10px] text-[var(--muted)]">Aplikacja odejmie przelewy już zaimportowane i operacje ręczne</span></span>
                                     </label>
                                 </div>
                             </div>
-                            <div class="grid gap-3 grid-cols-2 min-[900px]:max-w-md">
-                                <div>
-                                    <label for="cel-oprocentowanie" class="field-label">Oprocentowanie (% rocznie)</label>
-                                    <input type="text" inputmode="decimal" id="cel-oprocentowanie" value="0,5" class="input kwota" aria-describedby="cel-odsetki-opis" data-wpis="odswiezPodpowiedzSalda()">
-                                </div>
-                                <div>
-                                    <label for="cel-prog" class="field-label">Odsetki od nadwyżki ponad (zł)</label>
-                                    <input type="text" inputmode="decimal" id="cel-prog" value="1000" class="input kwota" aria-describedby="cel-odsetki-opis" data-wpis="odswiezPodpowiedzSalda()">
-                                </div>
-                            </div>
-                            <p id="cel-odsetki-opis" class="text-[10px] text-[var(--muted)]">Wpisz 0 w progu, jeśli odsetki są od całego salda, albo 0 w oprocentowaniu, jeśli subkonto nie jest oprocentowane. Aplikacja szacuje odsetki dziennie i dopisuje je co miesiąc po potrąceniu 19% podatku Belki.</p>
                             <p id="cel-saldo-podpowiedz" class="text-[11px] text-[var(--muted)]" aria-live="polite"></p>
+                        </fieldset>
+
+                        <!-- Progi oprocentowania (1–3): wiersze rysuje cele.js (rysujProgiFormularza) -->
+                        <fieldset class="min-[900px]:col-span-2 space-y-2 border-t border-[var(--border)] pt-3">
+                            <legend class="field-label">Oprocentowanie subkonta</legend>
+                            <div id="cel-progi" class="space-y-2 min-[900px]:max-w-xl"></div>
+                            <button type="button" id="btn-dodaj-prog" data-klik="dodajProgOdsetek()" class="text-xs font-semibold text-[var(--accent)] hover:underline">+ Dodaj próg oprocentowania</button>
+                            <div class="space-y-1.5" role="radiogroup" aria-label="Jak bank liczy odsetki od salda">
+                                <label class="flex items-start gap-2 cursor-pointer">
+                                    <input type="radio" name="cel-odsetki-tryb" id="cel-odsetki-nadwyzka" checked class="mt-0.5 accent-[var(--accent)]" data-zmiana="odswiezPodpowiedzSalda()">
+                                    <span><span class="font-semibold">Każda część salda osobno</span><span class="block text-[10px] text-[var(--muted)]">np. od 0 zł: 5%, od 50 000 zł: 1% – nadwyżka ponad 50 000 zł ma 1%, reszta 5%</span></span>
+                                </label>
+                                <label class="flex items-start gap-2 cursor-pointer">
+                                    <input type="radio" name="cel-odsetki-tryb" id="cel-odsetki-calosc" class="mt-0.5 accent-[var(--accent)]" data-zmiana="odswiezPodpowiedzSalda()">
+                                    <span><span class="font-semibold">Całe saldo według progu</span><span class="block text-[10px] text-[var(--muted)]">gdy saldo sięga progu, cała kwota ma jego oprocentowanie</span></span>
+                                </label>
+                            </div>
+                            <p id="cel-odsetki-opis" class="text-[10px] text-[var(--muted)]">Poniżej pierwszego progu odsetek nie ma – wpisz 0 zł, jeśli bank płaci od pierwszej złotówki, albo 0% przy subkoncie nieoprocentowanym. Aplikacja szacuje odsetki dziennie i dopisuje je co miesiąc po potrąceniu 19% podatku Belki.</p>
+                            <p id="cel-odsetki-przyklad" class="text-[11px]" aria-live="polite"></p>
                         </fieldset>
 
                         <div class="min-[900px]:col-span-2">
@@ -358,7 +387,7 @@
                             <input type="text" id="cel-notatka" maxlength="80" placeholder="np. Chorwacja, 2 tygodnie" class="input">
                         </div>
 
-                        <p class="min-[900px]:col-span-2 text-[11px] text-[var(--muted)]">Przelewy na ten numer subkonta i wypłaty z podanymi słowami będą automatycznie przypisywane do celu – także te zaimportowane wcześniej.</p>
+                        <p class="min-[900px]:col-span-2 text-[11px] text-[var(--muted)]">Przelewy na ten numer subkonta i wypłaty z podanymi słowami będą automatycznie przypisywane do celu – także te zaimportowane wcześniej. Wpłaty i wypłaty spoza konta głównego dodasz ręcznie w szczegółach celu.</p>
                         <p id="cel-blad" role="alert" class="hidden min-[900px]:col-span-2 text-xs text-[var(--c-spend)] p-3 rounded-xl border border-current"></p>
                         <div class="flex gap-2 pt-1 min-[900px]:col-span-2">
                             <button type="submit" id="btn-zapisz-cel" class="btn-primary flex-1 min-[900px]:flex-none min-[900px]:w-48">Zapisz cel</button>
@@ -612,8 +641,15 @@
                     <article class="card space-y-3">
                         <h2 class="font-semibold text-sm">Kopia zapasowa</h2>
                         <p id="ust-kopia-info" class="text-xs text-[var(--muted)]"></p>
+                        <div>
+                            <label for="kopia-haslo" class="field-label">Hasło do kopii <span class="font-normal text-[var(--muted)]">(zalecane)</span></label>
+                            <!-- autocomplete="new-password": menedżer haseł może zaproponować i zapamiętać silne hasło -->
+                            <input type="password" id="kopia-haslo" minlength="8" maxlength="200" autocomplete="new-password" class="input" aria-describedby="kopia-haslo-wskazowka kopia-haslo-blad" data-klawisz="klawiszHaslaKopii(event)">
+                            <p id="kopia-haslo-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Z hasłem plik jest zaszyfrowany (AES-256) – bez hasła nikt go nie odczyta, także Ty. Hasła nie da się odzyskać. Puste pole = zwykły plik JSON.</p>
+                            <p id="kopia-haslo-blad" role="alert" class="hidden text-xs text-[var(--c-spend)] mt-1"></p>
+                        </div>
                         <button type="button" id="btn-zapisz-kopie" data-klik="zapiszKopie()" class="btn-primary">Zapisz kopię</button>
-                        <p class="text-[10px] text-[var(--muted)]">Plik JSON ze wszystkimi transakcjami, regułami, celami, kategoriami i ustawieniami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
+                        <p class="text-[10px] text-[var(--muted)]">Plik ze wszystkimi transakcjami, regułami, celami, kategoriami i ustawieniami otwartego budżetu. Trzymaj go poza aplikacją, np. na dysku w chmurze.</p>
                     </article>
                     <article class="card space-y-3">
                         <h2 class="font-semibold text-sm">Eksport do Excela</h2>
@@ -654,17 +690,52 @@
                             </div>
                             <div>
                                 <label for="haslo-nowe" class="field-label">Nowe hasło</label>
-                                <input type="password" id="haslo-nowe" required minlength="8" maxlength="72" autocomplete="new-password" class="input" aria-describedby="haslo-nowe-wskazowka">
-                                <p id="haslo-nowe-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 8 znaków. Nie używaj hasła z innych serwisów.</p>
+                                <input type="password" id="haslo-nowe" required minlength="12" maxlength="72" autocomplete="new-password" class="input" aria-describedby="haslo-nowe-wskazowka">
+                                <p id="haslo-nowe-wskazowka" class="text-[10px] text-[var(--muted)] mt-1">Co najmniej 12 znaków – np. kilka losowych słów. Nie używaj hasła z innych serwisów.</p>
                             </div>
                             <div>
                                 <label for="haslo-nowe-2" class="field-label">Powtórz nowe hasło</label>
-                                <input type="password" id="haslo-nowe-2" required minlength="8" maxlength="72" autocomplete="new-password" class="input">
+                                <input type="password" id="haslo-nowe-2" required minlength="12" maxlength="72" autocomplete="new-password" class="input">
+                            </div>
+                            <div id="haslo-kod-pole" class="hidden">
+                                <label for="haslo-kod" class="field-label">Kod z aplikacji uwierzytelniającej</label>
+                                <input type="text" id="haslo-kod" inputmode="numeric" autocomplete="one-time-code" maxlength="7" class="input kwota max-w-[10rem] text-center tracking-[0.3em]">
                             </div>
                             <p id="haslo-blad" role="alert" class="hidden text-xs text-[var(--c-spend)]"></p>
                             <button type="submit" id="btn-zmien-haslo" class="btn-primary !w-auto px-6">Zmień hasło</button>
                         </form>
                         <p class="text-[11px] text-[var(--muted)]">Nie pamiętasz obecnego hasła? Wyloguj się i na ekranie logowania wybierz „Nie pamiętasz hasła?” – dostaniesz link na e-mail.</p>
+                    </article>
+                </div>
+                <!-- POZIOM 2: BEZPIECZEŃSTWO (bezpieczenstwo.js) -->
+                <div class="ust-strona contents hidden" data-strona="bezpieczenstwo">
+                    <article class="card space-y-3 span-all max-w-2xl w-full" aria-labelledby="bezp-tytul">
+                        <div>
+                            <h2 id="bezp-tytul" class="font-semibold text-sm">Weryfikacja dwuetapowa (MFA)</h2>
+                            <p id="bezp-konto" class="text-[11px] text-[var(--muted)]"></p>
+                        </div>
+                        <div id="bezp-mfa" class="space-y-3" aria-live="polite"></div>
+                        <div id="bezp-wlaczanie" class="hidden space-y-3"></div>
+                    </article>
+                    <article class="card space-y-3 span-all max-w-2xl w-full">
+                        <h2 class="font-semibold text-sm">Sesje</h2>
+                        <div id="bezp-sesja"></div>
+                        <div class="border-t border-[var(--border)] pt-3 space-y-2">
+                            <button type="button" id="btn-wyloguj-wszedzie" data-klik="wylogujWszedzie()" class="btn-secondary !w-auto px-4">Wyloguj na wszystkich urządzeniach</button>
+                            <p class="text-[10px] text-[var(--muted)]">Gdy zgubisz telefon albo logowałeś(-aś) się na cudzym komputerze. Zwykłe „Wyloguj” w nagłówku wylogowuje tylko to urządzenie.</p>
+                        </div>
+                    </article>
+                </div>
+
+                <!-- POZIOM 2: HISTORIA ZMIAN otwartego budżetu (historia.js, migracja 2026-11g) -->
+                <div class="ust-strona contents hidden" data-strona="historia">
+                    <article class="card space-y-3 span-all" aria-labelledby="hist-tytul">
+                        <div class="flex justify-between items-center gap-2 flex-wrap">
+                            <h2 id="hist-tytul" class="font-semibold text-sm">Historia zmian <span id="hist-budzet" class="font-normal text-[var(--muted)]"></span></h2>
+                            <button type="button" id="btn-hist-odswiez" data-klik="odswiezHistorie()" class="chip">Odśwież</button>
+                        </div>
+                        <p class="text-[11px] text-[var(--muted)]">Kto i kiedy dodał, zmienił albo usunął dane. Wpisy zapisuje baza – nie da się ich zmienić ani usunąć z aplikacji.</p>
+                        <div id="hist-lista" aria-live="polite"></div>
                     </article>
                 </div>
             </section>
@@ -710,6 +781,8 @@
 
     <!-- LOGIKA APLIKACJI (kolejność ma znaczenie; defer = po wczytaniu HTML, w tej kolejności) -->
     <script src="js/zdarzenia.js" defer></script>
+    <script src="js/bezpieczenstwo.js" defer></script>
+    <script src="js/szyfrowanie.js" defer></script>
     <script src="js/config.js" defer></script>
     <script src="js/utils.js" defer></script>
     <script src="js/state.js" defer></script>
@@ -730,6 +803,7 @@
     <script src="js/views/oszczednosci.js" defer></script>
     <script src="js/views/kopia.js" defer></script>
     <script src="js/views/konto.js" defer></script>
+    <script src="js/views/historia.js" defer></script>
     <script src="js/views/ustawienia.js" defer></script>
     <script src="js/app.js" defer></script>
     <script src="js/pwa.js" defer></script>
