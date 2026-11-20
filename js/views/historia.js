@@ -42,7 +42,7 @@ function wartoscWHistorii(pole, wartosc) {
     }
     if (pole === 'interest_tiers') {
         const progi = wartosc && Array.isArray(wartosc.tiers) ? wartosc.tiers.length : 0;
-        return progi ? `${progi} ${odmiana(progi, 'próg', 'progi', 'progów')}` : '—';
+        return progi ? `${progi} ${odmiana(progi, 'próg', 'progi', 'progów')}${wartosc.promo ? ` + promocja ${String(wartosc.promo.rate).replace('.', ',')}%` : ''}` : '—';
     }
     if (pole === 'receipt_path') return 'plik';
     if (typeof wartosc === 'object') return '(zmieniono)';

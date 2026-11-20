@@ -50,7 +50,7 @@ pokazuje ostatnio pobrane dane (tylko podgląd).
 
 ## 2. Aktualizacja istniejącej instalacji
 
-### Do wersji 2026-11h (cele: operacje ręczne i progi oprocentowania)
+### Do wersji 2026-11h (cele: operacje ręczne, progi i promocje oprocentowania)
 
 1. *SQL Editor*: uruchom `supabase/migracja_2026-11h_cele_operacje_progi.sql` (można ponownie).
    Dodaje do tabeli `goals` kolumny `manual_operations` i `interest_tiers`, a numer subkonta
@@ -254,6 +254,11 @@ Ograniczenia (świadomie zostawione):
 - **Progi oprocentowania** (formularz celu, 1–3 progi): „każda część salda osobno” (np. do
   50 000 zł 5%, nadwyżka 1%) albo „całe saldo według progu”. Pod progami – przykład odsetek
   rocznie dla kwoty celu; w szczegółach celu – kafelek „Odsetki rocznie” ze stopą efektywną.
+- **Oprocentowanie promocyjne** (formularz celu): stopa przez 1–36 miesięcy od wybranego dnia,
+  opcjonalnie do limitu kwoty (nadwyżka ma zwykłą stopę z progów). Pod formularzem – ile promocja
+  da więcej niż zwykłe progi. Karta celu pokazuje datę końca promocji, ostrzega na 30 dni przed nią
+  i jeszcze 30 dni po niej („sprawdź, gdzie przenieść środki”). Promocja jest zapisana w
+  `interest_tiers.promo` – nie wymaga nowej migracji.
 
 ## 8. Praca nad kodem
 

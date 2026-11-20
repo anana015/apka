@@ -378,6 +378,32 @@
                                     <span><span class="font-semibold">Całe saldo według progu</span><span class="block text-[10px] text-[var(--muted)]">gdy saldo sięga progu, cała kwota ma jego oprocentowanie</span></span>
                                 </label>
                             </div>
+                            <!-- Oprocentowanie promocyjne przez kilka miesięcy (opcjonalnie do limitu kwoty) -->
+                            <div class="space-y-2 pt-1">
+                                <label class="flex items-start gap-2 cursor-pointer">
+                                    <input type="checkbox" id="cel-promo" class="mt-0.5 accent-[var(--accent)]" aria-controls="cel-promo-pola" data-zmiana="przelaczPromocje(this.checked)">
+                                    <span><span class="font-semibold">Oprocentowanie promocyjne</span><span class="block text-[10px] text-[var(--muted)]">np. 7% przez 3 miesiące dla nowych środków – potem obowiązują progi powyżej</span></span>
+                                </label>
+                                <div id="cel-promo-pola" class="hidden grid grid-cols-2 min-[900px]:grid-cols-4 gap-2 min-[900px]:max-w-3xl">
+                                    <div>
+                                        <label for="cel-promo-stopa" class="field-label">Promocja (% rocznie)</label>
+                                        <input type="text" inputmode="decimal" id="cel-promo-stopa" placeholder="np. 7" autocomplete="off" class="input kwota" data-wpis="odswiezPodpowiedzSalda()">
+                                    </div>
+                                    <div>
+                                        <label for="cel-promo-mies" class="field-label">Przez (miesięcy)</label>
+                                        <input type="number" id="cel-promo-mies" min="1" max="36" step="1" inputmode="numeric" placeholder="3" class="input kwota" data-wpis="odswiezPodpowiedzSalda()">
+                                    </div>
+                                    <div>
+                                        <label for="cel-promo-od" class="field-label">Od dnia</label>
+                                        <input type="date" id="cel-promo-od" min="2000-01-01" class="input" data-wpis="odswiezPodpowiedzSalda()">
+                                    </div>
+                                    <div>
+                                        <label for="cel-promo-limit" class="field-label">Do kwoty (zł) <span class="font-normal text-[var(--muted)]">– opcj.</span></label>
+                                        <input type="text" inputmode="decimal" id="cel-promo-limit" placeholder="bez limitu" autocomplete="off" class="input kwota" data-wpis="odswiezPodpowiedzSalda()">
+                                    </div>
+                                    <p class="col-span-2 min-[900px]:col-span-4 text-[10px] text-[var(--muted)]">Saldo do limitu ma stopę promocyjną, nadwyżka ponad limit – zwykłą z progów. Po zakończeniu promocji karta celu przypomni o tym przez 30 dni.</p>
+                                </div>
+                            </div>
                             <p id="cel-odsetki-opis" class="text-[10px] text-[var(--muted)]">Poniżej pierwszego progu odsetek nie ma – wpisz 0 zł, jeśli bank płaci od pierwszej złotówki, albo 0% przy subkoncie nieoprocentowanym. Aplikacja szacuje odsetki dziennie i dopisuje je co miesiąc po potrąceniu 19% podatku Belki.</p>
                             <p id="cel-odsetki-przyklad" class="text-[11px]" aria-live="polite"></p>
                         </fieldset>

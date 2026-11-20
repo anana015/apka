@@ -62,8 +62,8 @@ function stopaTekst(stopa) {
 
 // Opis progów: "0,5% rocznie od nadwyżki ponad 1 000 zł" / "do 1 000 zł: 0% · 1 000–50 000 zł: 5% · od 50 000 zł: 1% (…)"
 function opisProgow(oprocentowanie) {
-    if (!czyOprocentowany(oprocentowanie)) return 'bez oprocentowania';
     const { tryb, progi } = oprocentowanie;
+    if (!progi.some(p => p.stopa > 0)) return 'bez oprocentowania';
     if (progi.length === 1) {
         const p = progi[0];
         if (p.od === 0) return `${stopaTekst(p.stopa)} rocznie od całego salda`;
@@ -80,12 +80,65 @@ function opisProgow(oprocentowanie) {
     return `${czesci.join(' · ')} (${tryb === 'calosc' ? 'całe saldo według progu' : 'każda część salda osobno'})`;
 }
 
-function opisOprocentowania(cel) {
+// 'RRRR-MM-DD' -> '20.02.2027'
+function dataKrotko(iso) {
+    return /^\d{4}-\d{2}-\d{2}/.test(String(iso)) ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}` : '—';
+}
+
+// Ostatni dzień promocji (p.do to pierwszy dzień bez promocji)
+function ostatniDzienPromocji(p) {
+    return isoZDaty(dataUTC(p.do) - DZIEN_MS);
+}
+
+function dniDo(iso, dzis) {
+    return Math.round((dataUTC(iso) - dataUTC(dzis)) / DZIEN_MS);
+}
+
+// Stan promocji w dniu dzis: 'przed' | 'trwa' | 'po' (null = brak promocji)
+function stanPromocji(p, dzis) {
+    if (!p) return null;
+    return dzis < p.od ? 'przed' : dzis < p.do ? 'trwa' : 'po';
+}
+
+// "promocja 7% do 50 000 zł: 01.11.2026–31.01.2027 (trwa, zostało 72 dni)"
+function opisPromocji(p, dzis = dzisiejszaData()) {
+    if (!p) return '';
+    const stanTekst = {
+        przed: `od ${dataKrotko(p.od)}`,
+        trwa: `do ${dataKrotko(ostatniDzienPromocji(p))}, ${odmianaDni(dniDo(p.do, dzis))}`,
+        po: `zakończona ${dataKrotko(ostatniDzienPromocji(p))}`
+    }[stanPromocji(p, dzis)];
+    return `promocja ${stopaTekst(p.stopa)}${p.limit > 0 ? ` do ${zl(p.limit)}` : ''} przez ${p.miesiace} mies. (${stanTekst})`;
+}
+
+// Liczba dni do końca promocji (ostatni dzień też się liczy): "zostało 5 dni"
+function odmianaDni(n) {
+    return n === 1 ? 'został 1 dzień' : `${odmiana(n, 'został', 'zostały', 'zostało')} ${n} ${odmiana(n, 'dzień', 'dni', 'dni')}`;
+}
+
+function opisOprocentowania(cel, dzis = dzisiejszaData()) {
     const oprocentowanie = progiOdsetek(cel);
-    const opis = opisProgow(oprocentowanie);
-    if (!czyOprocentowany(oprocentowanie)) return opis;
+    if (!czyOprocentowany(oprocentowanie)) return 'bez oprocentowania';
+    const czesci = [opisProgow(oprocentowanie)];
+    if (oprocentowanie.promocja) czesci.push(opisPromocji(oprocentowanie.promocja, dzis));
     const kapitalizacja = { 1: 'co miesiąc', 3: 'co kwartał', 12: 'raz w roku' }[MIESIECY_MIEDZY_KAPITALIZACJAMI] || '';
-    return opis + (kapitalizacja ? `, kapitalizacja ${kapitalizacja}` : '');
+    return czesci.join('; ') + (kapitalizacja ? `, kapitalizacja ${kapitalizacja}` : '');
+}
+
+// Krótka informacja na karcie celu: promocja trwa (kończy się) albo skończyła się w ostatnich 30 dniach
+const DNI_PRZYPOMNIENIA_PROMOCJI = 30;
+function etykietaPromocjiNaKarcie(cel, dzis = dzisiejszaData()) {
+    const p = progiOdsetek(cel).promocja;
+    const stanP = stanPromocji(p, dzis);
+    if (stanP === 'trwa') {
+        const dni = dniDo(p.do, dzis);
+        const blisko = dni <= DNI_PRZYPOMNIENIA_PROMOCJI;
+        return { tekst: `Promocja ${stopaTekst(p.stopa)} do ${dataKrotko(ostatniDzienPromocji(p))}${blisko ? ` – ${odmianaDni(dni)}` : ''}`, uwaga: blisko };
+    }
+    if (stanP === 'po' && dniDo(dzis, p.do) < DNI_PRZYPOMNIENIA_PROMOCJI) {
+        return { tekst: `Promocja skończyła się ${dataKrotko(ostatniDzienPromocji(p))} – sprawdź, gdzie przenieść środki`, uwaga: true };
+    }
+    return null;
 }
 
 // Analiza wszystkich celów naraz (klasyfikacja transakcji tylko raz)
@@ -188,8 +241,16 @@ function kartaCelu(c, a, zakonczony = false) {
                     <button type="button" data-klik="event.stopPropagation(); otworzSzczegolyCelu('${id}')" class="text-[var(--fg)] font-semibold hover:underline">Szczegóły ›</button>
                 </div>
             </div>
+            ${htmlPromocjiNaKarcie(c)}
             ${potwierdzenieUsunieciaCelu(c)}
         </article>`;
+}
+
+function htmlPromocjiNaKarcie(c) {
+    const e = c.archived ? null : etykietaPromocjiNaKarcie(c);
+    if (!e) return '';
+    return `<p class="text-[11px] font-semibold flex items-center gap-1.5 ${e.uwaga ? 'text-amber-700 dark:text-amber-300' : 'text-[var(--accent)]'}">
+                <i data-lucide="${e.uwaga ? 'alarm-clock' : 'percent'}" class="w-3.5 h-3.5 shrink-0" aria-hidden="true"></i>${esc(e.tekst)}</p>`;
 }
 
 function potwierdzenieUsunieciaCelu(c) {
@@ -303,12 +364,18 @@ function kafelekCelu(tytul, wartosc, podpis = '', klasa = '') {
 }
 
 // Kafelek „Odsetki rocznie”: ile przy obecnym saldzie daje rok (po podatku) i stopa efektywna
-function kafelekOdsetekCelu(c, a) {
+// W czasie promocji: stopa promocyjna teraz i dla porównania kwota po jej końcu
+function kafelekOdsetekCelu(c, a, dzis = dzisiejszaData()) {
     const oprocentowanie = progiOdsetek(c);
     if (!czyOprocentowany(oprocentowanie)) return kafelekCelu('Odsetki rocznie', '—', 'subkonto bez oprocentowania');
-    const brutto = odsetkiRoczneOdSalda(a.saldo, oprocentowanie);
-    return kafelekCelu('Odsetki rocznie ≈', zl(brutto * (1 - PODATEK_BELKI)),
-        `po podatku · efektywnie ${stopaTekst(stopaEfektywna(a.saldo, oprocentowanie))}`);
+    const netto = brutto => zl(brutto * (1 - PODATEK_BELKI));
+    const teraz = odsetkiRoczneOdSalda(a.saldo, oprocentowanie, dzis);
+    const efektywnie = `efektywnie ${stopaTekst(stopaEfektywna(a.saldo, oprocentowanie, dzis))}`;
+    if (promocjaWDniu(oprocentowanie, dzis)) {
+        return kafelekCelu('Odsetki rocznie ≈ (promocja)', netto(teraz),
+            `po podatku · ${efektywnie} · po promocji ${netto(odsetkiZProgow(a.saldo, oprocentowanie))}`);
+    }
+    return kafelekCelu('Odsetki rocznie ≈', netto(teraz), `po podatku · ${efektywnie}`);
 }
 
 // Wykres „Wpłaty i wypłaty”: od pierwszego miesiąca z operacją do M (albo do późniejszej
@@ -796,14 +863,71 @@ function sprawdzProgiOdsetek(wiersze, tryb = 'nadwyzka') {
     return { oprocentowanie: { tryb: tryb === 'calosc' ? 'calosc' : 'nadwyzka', progi } };
 }
 
-// Zapis do bazy: interest_tiers + stare pola (pierwszy oprocentowany próg) dla zgodności wstecz
-function oprocentowanieDoZapisu({ tryb, progi }) {
+/**
+ * Czysta funkcja – oprocentowanie promocyjne z pól formularza.
+ * pola: { wlaczona: bool, stopa: tekst %, od: 'RRRR-MM-DD', miesiace: tekst, limit: tekst zł (puste = bez limitu) }
+ * Zwraca { promocja: null | { stopa, od, miesiace, do, limit } } albo { blad }.
+ */
+function sprawdzPromocjeOdsetek(pola) {
+    if (!pola || !pola.wlaczona) return { promocja: null };
+    const stopa = liczbaZPola(pola.stopa, NaN);
+    if (!Number.isFinite(stopa) || stopa <= 0) return { blad: 'Promocja: podaj oprocentowanie promocyjne w procentach, np. 7.' };
+    if (stopa > MAKS_STOPA_ODSETEK) return { blad: `Promocja: oprocentowanie może wynosić najwyżej ${MAKS_STOPA_ODSETEK}%.` };
+    const od = String(pola.od || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(od) || Number.isNaN(dataUTC(od)) || od < NAJWCZESNIEJSZA_DATA_OPERACJI) {
+        return { blad: 'Promocja: wybierz datę, od której obowiązuje.' };
+    }
+    const miesiace = Number(String(pola.miesiace ?? '').trim());
+    if (!Number.isInteger(miesiace) || miesiace < 1 || miesiace > MAKS_MIESIECY_PROMOCJI) {
+        return { blad: `Promocja: podaj czas trwania w pełnych miesiącach, od 1 do ${MAKS_MIESIECY_PROMOCJI}.` };
+    }
+    const limit = groszeZPolaFormularza(pola.limit);
+    if (!Number.isFinite(limit) || limit < 0) return { blad: 'Promocja: limit kwoty podaj w złotych (puste = bez limitu).' };
+    return { promocja: { stopa, od, miesiace, do: dodajMiesiace(od, miesiace), limit } };
+}
+
+// Zapis do bazy: interest_tiers (z promocją) + stare pola (pierwszy oprocentowany próg) dla zgodności wstecz
+function oprocentowanieDoZapisu({ tryb, progi, promocja = null }) {
     const pierwszy = progi.find(p => p.stopa > 0);
+    const interest_tiers = { mode: tryb === 'calosc' ? 'whole' : 'marginal', tiers: progi.map(p => ({ from_gr: p.od, rate: p.stopa })) };
+    if (promocja) interest_tiers.promo = { rate: promocja.stopa, from: promocja.od, months: promocja.miesiace, max_gr: promocja.limit };
     return {
-        interest_tiers: { mode: tryb === 'calosc' ? 'whole' : 'marginal', tiers: progi.map(p => ({ from_gr: p.od, rate: p.stopa })) },
+        interest_tiers,
         interest_rate: pierwszy ? pierwszy.stopa : 0,
         interest_threshold_gr: pierwszy ? pierwszy.od : 0
     };
+}
+
+function polaPromocjiZFormularza() {
+    return {
+        wlaczona: document.getElementById('cel-promo').checked,
+        stopa: document.getElementById('cel-promo-stopa').value,
+        od: document.getElementById('cel-promo-od').value,
+        miesiace: document.getElementById('cel-promo-mies').value,
+        limit: document.getElementById('cel-promo-limit').value
+    };
+}
+
+// Pokazuje / ukrywa pola promocji; przy włączeniu – dzisiejsza data i 3 miesiące jako start
+function przelaczPromocje(wlaczona) {
+    document.getElementById('cel-promo-pola').classList.toggle('hidden', !wlaczona);
+    if (wlaczona) {
+        const od = document.getElementById('cel-promo-od');
+        const mies = document.getElementById('cel-promo-mies');
+        if (!od.value) od.value = dzisiejszaData();
+        if (!mies.value) mies.value = '3';
+        document.getElementById('cel-promo-stopa').focus();
+    }
+    odswiezPodpowiedzSalda();
+}
+
+function ustawPolaPromocji(p) {
+    document.getElementById('cel-promo').checked = !!p;
+    document.getElementById('cel-promo-stopa').value = p ? String(p.stopa).replace('.', ',') : '';
+    document.getElementById('cel-promo-od').value = p ? p.od : '';
+    document.getElementById('cel-promo-mies').value = p ? String(p.miesiace) : '';
+    document.getElementById('cel-promo-limit').value = p && p.limit > 0 ? zlDoPola(p.limit) : '';
+    document.getElementById('cel-promo-pola').classList.toggle('hidden', !p);
 }
 
 function trybOdsetekZFormularza() {
@@ -818,7 +942,11 @@ function wierszeProgowZFormularza() {
 }
 
 function oprocentowanieZFormularza() {
-    return sprawdzProgiOdsetek(wierszeProgowZFormularza(), trybOdsetekZFormularza());
+    const progi = sprawdzProgiOdsetek(wierszeProgowZFormularza(), trybOdsetekZFormularza());
+    if (progi.blad) return progi;
+    const { promocja, blad } = sprawdzPromocjeOdsetek(polaPromocjiZFormularza());
+    if (blad) return { blad };
+    return { oprocentowanie: { ...progi.oprocentowanie, promocja } };
 }
 
 // Wiersze progów: „Od kwoty (zł)” + „% rocznie” + usuń (gdy jest więcej niż jeden)
@@ -877,9 +1005,20 @@ function odswiezPrzykladOdsetek() {
     }
     const cel = groszeZPolaFormularza(document.getElementById('cel-kwota').value);
     const saldo = Number.isFinite(cel) && cel > 0 ? cel : SALDO_PRZYKLADU_ODSETEK_GR;
-    const brutto = odsetkiRoczneOdSalda(saldo, oprocentowanie);
-    p.innerText = `Przykład: przy saldzie ${zl(saldo)} to ok. ${zl(brutto * (1 - PODATEK_BELKI), 2)} odsetek rocznie po podatku ` +
+    const netto = brutto => zl(brutto * (1 - PODATEK_BELKI), 2);
+    const zwykle = odsetkiZProgow(saldo, oprocentowanie);
+    let tekst = `Przykład: przy saldzie ${zl(saldo)} to ok. ${netto(zwykle)} odsetek rocznie po podatku ` +
         `(efektywnie ${stopaTekst(stopaEfektywna(saldo, oprocentowanie))} przed podatkiem).`;
+    const promocja = oprocentowanie.promocja;
+    if (promocja) {
+        // Odsetki z całego okresu promocji przy stałym saldzie (dzień po dniu, jak w obliczeniach)
+        const dni = Math.round((dataUTC(promocja.do) - dataUTC(promocja.od)) / DZIEN_MS);
+        const wPromocji = odsetkiRoczneOdSalda(saldo, oprocentowanie, promocja.od) * dni / DNI_W_ROKU_ODSETKI;
+        const bezPromocji = zwykle * dni / DNI_W_ROKU_ODSETKI;
+        tekst += ` Promocja ${dataKrotko(promocja.od)}–${dataKrotko(ostatniDzienPromocji(promocja))}: ok. ${netto(wPromocji)} ` +
+            `po podatku za cały okres, czyli ${netto(wPromocji - bezPromocji)} więcej niż bez promocji.`;
+    }
+    p.innerText = tekst;
 }
 
 // ---- Saldo początkowe -------------------------------------------------
@@ -996,8 +1135,9 @@ function otworzFormularzCelu(id = null) {
     document.getElementById('cel-saldo-poczatkowe').checked = true;
     document.getElementById('cel-notatka').value = cel ? (cel.note || '') : '';
 
-    const { tryb, progi } = progiOdsetek(cel || {});
+    const { tryb, progi, promocja } = progiOdsetek(cel || {});
     document.getElementById(tryb === 'calosc' ? 'cel-odsetki-calosc' : 'cel-odsetki-nadwyzka').checked = true;
+    ustawPolaPromocji(promocja);
     rysujProgiFormularza(progi.map(p => ({ od: zlDoPola(p.od), stopa: String(p.stopa).replace('.', ',') })));
 
     pokazBladCelu('');

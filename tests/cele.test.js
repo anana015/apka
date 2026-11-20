@@ -26,8 +26,8 @@ test('progi „całe saldo według progu”: cała kwota ma stopę najwyższego 
 
 test('zgodność wstecz: stare pola = jeden próg; wynik jak dawniej', () => {
     assert.deepEqual(zwykly(ctx.progiOdsetek({ interest_rate: 0.5, interest_threshold_gr: 100000 })),
-        { tryb: 'nadwyzka', progi: [{ od: 100000, stopa: 0.5 }] });
-    assert.deepEqual(zwykly(ctx.progiOdsetek({})), { tryb: 'nadwyzka', progi: [{ od: 100000, stopa: 0.5 }] }); // domyślne z config.js
+        { tryb: 'nadwyzka', progi: [{ od: 100000, stopa: 0.5 }], promocja: null });
+    assert.deepEqual(zwykly(ctx.progiOdsetek({})), { tryb: 'nadwyzka', progi: [{ od: 100000, stopa: 0.5 }], promocja: null }); // domyślne z config.js
     const stary = ctx.odsetkiSubkonta({ saldoPoczatkowe: 300000, od: '2026-01-01', doDnia: '2026-06-30', stopa: 3.65, prog: 100000 });
     const nowy = ctx.odsetkiSubkonta({ saldoPoczatkowe: 300000, od: '2026-01-01', doDnia: '2026-06-30',
         oprocentowanie: ctx.progiOdsetek({ interest_tiers: { mode: 'marginal', tiers: [{ from_gr: 100000, rate: 3.65 }] } }) });
@@ -141,4 +141,65 @@ test('historia: pola celu z migracji 2026-11h', () => {
         interest_tiers: [null, { mode: 'marginal', tiers: [{}, {}] }],
         keywords_out: ['a', 'b'] } });
     assert.deepEqual([...o.szczegoly], ['operacje ręczne: 0 operacji → 2 operacje', 'progi oprocentowania: — → 2 progi', 'słowa wypłat: a → b']);
+});
+
+test('promocja: okres (miesiące z przycięciem dnia), stopa do limitu, nadwyżka według progów', () => {
+    assert.equal(ctx.dodajMiesiace('2026-11-30', 3), '2027-02-28');
+    assert.equal(ctx.dodajMiesiace('2026-01-31', 1), '2026-02-28');
+    assert.equal(ctx.dodajMiesiace('2026-11-01', 3), '2027-02-01');
+    const opr = ctx.progiOdsetek({ interest_tiers: { mode: 'marginal', tiers: [{ from_gr: 0, rate: 1 }, { from_gr: 1000000, rate: 2 }],
+        promo: { rate: 7, from: '2026-11-01', months: 3, max_gr: 500000 } } });
+    assert.deepEqual(zwykly(opr.promocja), { stopa: 7, od: '2026-11-01', miesiace: 3, do: '2027-02-01', limit: 500000 });
+    // poza promocją: progi
+    assert.equal(ctx.odsetkiRoczneOdSalda(1500000, opr, '2027-02-01'), 20000);
+    // w promocji: 5 000 zł po 7%, 5 000–10 000 zł po 1%, ponad 10 000 zł po 2%
+    assert.equal(+ctx.odsetkiRoczneOdSalda(1500000, opr, '2027-01-31').toFixed(6), 500000 * 0.07 + 500000 * 0.01 + 500000 * 0.02);
+    assert.equal(Math.round(ctx.odsetkiRoczneOdSalda(300000, opr, '2026-11-15')), 21000);
+    // tryb „całe saldo”: nadwyżka ponad limit ma stopę progu, do którego sięga całe saldo
+    const calosc = ctx.progiOdsetek({ interest_tiers: { mode: 'whole', tiers: [{ from_gr: 0, rate: 1 }, { from_gr: 1000000, rate: 2 }],
+        promo: { rate: 7, from: '2026-11-01', months: 3, max_gr: 500000 } } });
+    assert.equal(+ctx.odsetkiRoczneOdSalda(1500000, calosc, '2026-12-01').toFixed(6), 500000 * 0.07 + 1000000 * 0.02);
+    // niepoprawna promocja jest pomijana
+    assert.equal(ctx.progiOdsetek({ interest_tiers: { tiers: [{ from_gr: 0, rate: 1 }], promo: { rate: 5, from: 'x', months: 3 } } }).promocja, null);
+});
+
+test('promocja: odsetki dzień po dniu tylko w okresie promocji', () => {
+    // 1 000 zł, zwykle 0%, promocja 3,65% przez 1 miesiąc od 15 stycznia -> 10 gr dziennie przez 31 dni
+    const opr = ctx.progiOdsetek({ interest_tiers: { mode: 'marginal', tiers: [{ from_gr: 0, rate: 0 }],
+        promo: { rate: 3.65, from: '2026-01-15', months: 1, max_gr: 0 } } });
+    const w = ctx.odsetkiSubkonta({ saldoPoczatkowe: 100000, od: '2026-01-01', doDnia: '2026-03-31', oprocentowanie: opr });
+    assert.deepEqual(zwykly(w.kapitalizacje.map(k => [k.data, k.brutto])), [['2026-01-31', 170], ['2026-02-28', 140]]);
+    assert.equal(ctx.czyOprocentowany(opr), true);
+});
+
+test('formularz: sprawdzPromocjeOdsetek i zapis promocji', () => {
+    assert.deepEqual(zwykly(ctx.sprawdzPromocjeOdsetek({ wlaczona: false })), { promocja: null });
+    const ok = ctx.sprawdzPromocjeOdsetek({ wlaczona: true, stopa: '7,5', od: '2026-11-20', miesiace: '3', limit: '50 000' });
+    assert.deepEqual(zwykly(ok.promocja), { stopa: 7.5, od: '2026-11-20', miesiace: 3, do: '2027-02-20', limit: 5000000 });
+    assert.equal(ctx.sprawdzPromocjeOdsetek({ wlaczona: true, stopa: '7', od: '2026-11-20', miesiace: '3', limit: '' }).promocja.limit, 0);
+    assert.match(ctx.sprawdzPromocjeOdsetek({ wlaczona: true, stopa: '0', od: '2026-11-20', miesiace: '3' }).blad, /oprocentowanie promocyjne/);
+    assert.match(ctx.sprawdzPromocjeOdsetek({ wlaczona: true, stopa: '7', od: '', miesiace: '3' }).blad, /datę/);
+    assert.match(ctx.sprawdzPromocjeOdsetek({ wlaczona: true, stopa: '7', od: '2026-11-20', miesiace: '2,5' }).blad, /pełnych miesiącach/);
+    assert.match(ctx.sprawdzPromocjeOdsetek({ wlaczona: true, stopa: '7', od: '2026-11-20', miesiace: '40' }).blad, /od 1 do 36/);
+    const zapis = ctx.oprocentowanieDoZapisu({ tryb: 'nadwyzka', progi: [{ od: 0, stopa: 1 }], promocja: ok.promocja });
+    assert.deepEqual(zwykly(zapis.interest_tiers.promo), { rate: 7.5, from: '2026-11-20', months: 3, max_gr: 5000000 });
+    // zapis -> odczyt daje tę samą promocję
+    assert.deepEqual(zwykly(ctx.progiOdsetek({ interest_tiers: zapis.interest_tiers }).promocja), zwykly(ok.promocja));
+});
+
+test('promocja: opisy i przypomnienie na karcie celu', () => {
+    const cel = { interest_tiers: { mode: 'marginal', tiers: [{ from_gr: 0, rate: 1 }], promo: { rate: 7, from: '2026-11-01', months: 3, max_gr: 5000000 } } };
+    const p = ctx.progiOdsetek(cel).promocja;
+    assert.equal(ctx.opisPromocji(p, '2026-12-01').replace(/\s/g, ' '), 'promocja 7% do 50 000 zł przez 3 mies. (do 31.01.2027, zostały 62 dni)');
+    assert.equal(ctx.opisPromocji(p, '2026-10-01').replace(/\s/g, ' '), 'promocja 7% do 50 000 zł przez 3 mies. (od 01.11.2026)');
+    assert.match(ctx.opisPromocji(p, '2026-12-25'), /zostało 38 dni/);
+    assert.equal(ctx.etykietaPromocjiNaKarcie(cel, '2026-12-01').uwaga, false);
+    assert.equal(zwykly(ctx.etykietaPromocjiNaKarcie(cel, '2027-01-30')).tekst, 'Promocja 7% do 31.01.2027 – zostały 2 dni');
+    assert.match(ctx.etykietaPromocjiNaKarcie(cel, '2027-02-10').tekst, /skończyła się 31.01.2027/);
+    assert.equal(ctx.etykietaPromocjiNaKarcie(cel, '2027-04-10'), null);
+    assert.equal(ctx.opisOprocentowania(cel, '2026-12-01').startsWith('1% rocznie od całego salda; promocja 7%'), true);
+});
+
+test('historia: progi z promocją', () => {
+    assert.equal(ctx.wartoscWHistorii('interest_tiers', { tiers: [{}, {}], promo: { rate: 7.5 } }), '2 progi + promocja 7,5%');
 });

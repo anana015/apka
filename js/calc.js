@@ -152,12 +152,15 @@ function parametryOdsetek(cel) {
 }
 
 /**
- * Progi oprocentowania celu: { tryb, progi: [{ od: grosze, stopa: % rocznie }] } (rosnąco po „od”).
+ * Progi oprocentowania celu: { tryb, progi: [{ od: grosze, stopa: % rocznie }], promocja } (progi rosnąco po „od”).
  *  - tryb 'nadwyzka': każda część salda ma stopę swojego progu (do następnego progu);
  *    poniżej pierwszego progu – 0%. Jeden próg = dawne „X% od nadwyżki ponad Y zł”.
  *  - tryb 'calosc': całe saldo ma stopę najwyższego progu, do którego sięga saldo.
- * Źródło: kolumna interest_tiers = { mode: 'marginal' | 'whole', tiers: [{ from_gr, rate }] }
- * (migracja 2026-11h); bez niej – jeden próg z parametryOdsetek().
+ *  - promocja: null albo { stopa, od: 'RRRR-MM-DD', miesiace, do: 'RRRR-MM-DD' (pierwszy dzień
+ *    bez promocji), limit: grosze (0 = bez limitu) } – przez podaną liczbę miesięcy saldo do limitu
+ *    ma stopę promocyjną, nadwyżka ponad limit – zwykłą stopę z progów.
+ * Źródło: kolumna interest_tiers = { mode: 'marginal' | 'whole', tiers: [{ from_gr, rate }],
+ *   promo?: { rate, from, months, max_gr } } (migracja 2026-11h); bez niej – jeden próg z parametryOdsetek().
  */
 function progiOdsetek(cel = {}) {
     const zapisane = cel.interest_tiers;
@@ -167,24 +170,55 @@ function progiOdsetek(cel = {}) {
             .filter(p => Number.isFinite(p.stopa) && p.stopa >= 0)
             .sort((a, b) => a.od - b.od)
             .slice(0, MAKS_PROGOW_ODSETEK);
-        if (progi.length) return { tryb: zapisane.mode === 'whole' ? 'calosc' : 'nadwyzka', progi };
+        if (progi.length) return { tryb: zapisane.mode === 'whole' ? 'calosc' : 'nadwyzka', progi, promocja: promocjaOdsetek(zapisane.promo) };
     }
     const { stopa, prog } = parametryOdsetek(cel);
-    return { tryb: 'nadwyzka', progi: [{ od: prog, stopa }] };
+    return { tryb: 'nadwyzka', progi: [{ od: prog, stopa }], promocja: null };
+}
+
+const MAKS_MIESIECY_PROMOCJI = 36;
+
+// 'RRRR-MM-DD' + n miesięcy; dzień przycięty do długości miesiąca (31 stycznia + 1 = 28/29 lutego)
+function dodajMiesiace(iso, n) {
+    const [r, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+    const ostatni = new Date(Date.UTC(r, m - 1 + n + 1, 0)).getUTCDate();
+    return isoZDaty(Date.UTC(r, m - 1 + n, Math.min(d, ostatni)));
+}
+
+// Zapis promocji z bazy -> { stopa, od, miesiace, do, limit } albo null (brak / niepoprawna)
+function promocjaOdsetek(promo) {
+    if (!promo || typeof promo !== 'object') return null;
+    const stopa = Number(promo.rate);
+    const miesiace = Number(promo.months);
+    const od = String(promo.from || '');
+    if (!(Number.isFinite(stopa) && stopa >= 0) || !Number.isInteger(miesiace) || miesiace < 1 ||
+        miesiace > MAKS_MIESIECY_PROMOCJI || !/^\d{4}-\d{2}-\d{2}$/.test(od)) return null;
+    const limit = Math.max(0, Math.round(Number(promo.max_gr) || 0));
+    return { stopa, od, miesiace, do: dodajMiesiace(od, miesiace), limit };
+}
+
+// Promocja obowiązująca w danym dniu (null = zwykłe progi)
+function promocjaWDniu(oprocentowanie, iso) {
+    const p = oprocentowanie && oprocentowanie.promocja;
+    return p && iso && iso >= p.od && iso < p.do ? p : null;
 }
 
 function czyOprocentowany(oprocentowanie) {
-    return !!oprocentowanie && oprocentowanie.progi.some(p => p.stopa > 0);
+    return !!oprocentowanie && (oprocentowanie.progi.some(p => p.stopa > 0) ||
+        !!(oprocentowanie.promocja && oprocentowanie.promocja.stopa > 0));
 }
 
-// Odsetki brutto za cały rok od stałego salda (grosze, z ułamkami) – czysta funkcja
-function odsetkiRoczneOdSalda(saldo, { tryb, progi }) {
+// Stopa najwyższego progu, do którego sięga saldo (tryb „całe saldo”)
+function stopaProgu(saldo, progi) {
+    let stopa = 0;
+    for (const p of progi) if (saldo >= p.od) stopa = p.stopa;
+    return stopa;
+}
+
+// Odsetki brutto za rok według samych progów (bez promocji)
+function odsetkiZProgow(saldo, { tryb, progi }) {
     if (!(saldo > 0)) return 0;
-    if (tryb === 'calosc') {
-        let stopa = 0;
-        for (const p of progi) if (saldo >= p.od) stopa = p.stopa;
-        return saldo * stopa / 100;
-    }
+    if (tryb === 'calosc') return saldo * stopaProgu(saldo, progi) / 100;
     let suma = 0;
     progi.forEach((p, i) => {
         const gora = i + 1 < progi.length ? progi[i + 1].od : Infinity;
@@ -194,9 +228,27 @@ function odsetkiRoczneOdSalda(saldo, { tryb, progi }) {
     return suma;
 }
 
-// Oprocentowanie efektywne (% rocznie, przed podatkiem) przy danym saldzie
-function stopaEfektywna(saldo, oprocentowanie) {
-    return saldo > 0 ? (odsetkiRoczneOdSalda(saldo, oprocentowanie) / saldo) * 100 : 0;
+// Odsetki brutto za cały rok od stałego salda (grosze, z ułamkami) – czysta funkcja.
+// iso: dzień, dla którego liczymy – w okresie promocji saldo do limitu ma stopę promocyjną,
+// a nadwyżka ponad limit zwykłą (w trybie „nadwyżka” – stopy progów powyżej limitu).
+function odsetkiRoczneOdSalda(saldo, oprocentowanie, iso = null) {
+    if (!(saldo > 0)) return 0;
+    const promocja = promocjaWDniu(oprocentowanie, iso);
+    if (!promocja) return odsetkiZProgow(saldo, oprocentowanie);
+    const wPromocji = promocja.limit > 0 ? Math.min(saldo, promocja.limit) : saldo;
+    const reszta = saldo - wPromocji;
+    let zwykle = 0;
+    if (reszta > 0) {
+        zwykle = oprocentowanie.tryb === 'calosc'
+            ? reszta * stopaProgu(saldo, oprocentowanie.progi) / 100
+            : odsetkiZProgow(saldo, oprocentowanie) - odsetkiZProgow(wPromocji, oprocentowanie);
+    }
+    return wPromocji * promocja.stopa / 100 + zwykle;
+}
+
+// Oprocentowanie efektywne (% rocznie, przed podatkiem) przy danym saldzie (w dniu iso)
+function stopaEfektywna(saldo, oprocentowanie, iso = null) {
+    return saldo > 0 ? (odsetkiRoczneOdSalda(saldo, oprocentowanie, iso) / saldo) * 100 : 0;
 }
 
 /**
@@ -207,7 +259,7 @@ function stopaEfektywna(saldo, oprocentowanie) {
  */
 function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa = 0, prog = 0, oprocentowanie = null }) {
     const wynik = { brutto: 0, podatek: 0, netto: 0, kapitalizacje: [] };
-    const opr = oprocentowanie || { tryb: 'nadwyzka', progi: [{ od: Math.max(0, prog || 0), stopa }] };
+    const opr = oprocentowanie || { tryb: 'nadwyzka', progi: [{ od: Math.max(0, prog || 0), stopa }], promocja: null };
     if (!czyOprocentowany(opr) || !od || !doDnia || od > doDnia) return wynik;
 
     const zmiany = {};
@@ -223,7 +275,7 @@ function odsetkiSubkonta({ saldoPoczatkowe = 0, operacje = [], od, doDnia, stopa
     for (let t = dataUTC(od); t <= koniec; t += DZIEN_MS) {
         const iso = isoZDaty(t);
         if (zmiany[iso]) saldo += zmiany[iso];
-        narosle += odsetkiRoczneOdSalda(saldo, opr) / DNI_W_ROKU_ODSETKI;
+        narosle += odsetkiRoczneOdSalda(saldo, opr, iso) / DNI_W_ROKU_ODSETKI;
 
         const jutro = new Date(t + DZIEN_MS);
         const ostatniDzienMiesiaca = jutro.getUTCDate() === 1;
